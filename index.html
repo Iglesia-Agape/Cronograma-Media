@@ -165,10 +165,10 @@
     <header>
         <div>
             <h1>CRONOGRAMA GENERAL DE MEDIA</h1>
-            <p style="margin: 5px 0 0 0; color: var(--text-muted);">Sincronizado desde tu Google Sheets en tiempo real</p>
+            <p style="margin: 5px 0 0 0; color: var(--text-muted);">Visualización permanente y sincronizada con Google Sheets</p>
         </div>
         <div class="status-badge">
-            <div class="status-dot"></div> EN VIVO
+            <div class="status-dot"></div> MONITOR activo
         </div>
     </header>
 
@@ -200,34 +200,31 @@
     </div>
 
     <script>
-        // Tu enlace base de publicación CSV original modificado dinámicamente para aceptar gids
+        // Tu enlace de publicación CSV oficial
         const BASE_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTHX3umAF4N-HNU7qVBBj7TF6mHZTz9VIzNoAnyd1-kRL6J1Ig1zAdNnmMg9sb9dI7nS9N9XEc82wGb/pub?output=csv";
         
-        // Identificadores internos únicos de tus pestañas actuales
-        // NOTA: Si notas que al cambiar de pestaña te repite los mismos datos, ve a tu Google Sheets en el navegador,
-        // haz clic en cada pestaña abajo y mira el número final en la barra de direcciones (ej: gid=1481923)
-        // Colócalos aquí en orden si no te cargan hojas diferentes:
+        // Mapeo de GIDs de tus tres pestañas
         const GIDS = {
-            0: "0",          /* GID por defecto para la primera pestaña */
-            1: "1151618335", /* ID estimado para la segunda pestaña */
-            2: "1931811566"  /* ID estimado para la tercera pestaña */
+            0: "0",          // Ágape (Primera)
+            1: "1151618335", // Ágape (Segunda)
+            2: "1931811566"  // Explosión
         };
 
         let pestañaActivaIndex = 0;
 
         async function obtenerDatosCSV() {
             try {
-                // Forzamos la descarga de la pestaña específica agregando el parámetro gid y un timestamp para evitar caché de red
+                // cachebust evita que el navegador guarde una copia vieja del documento en caché
                 const urlConGid = `${BASE_CSV_URL}&gid=${GIDS[pestañaActivaIndex]}&cachebust=${new Date().getTime()}`;
                 const respuesta = await fetch(urlConGid);
                 const textoCSV = await respuesta.text();
                 procesarEstructuraOriginal(textoCSV);
             } catch (error) {
-                console.error("Error sincronizando transmisión:", error);
+                console.error("Error cargando la secuencia:", error);
                 document.getElementById("cronograma-body").innerHTML = `
                     <tr>
                         <td colspan="5" style="text-align: center; color: #ef4444; padding: 20px;">
-                            ⚠️ Error de sincronización en vivo. Intentando reconectar de forma automática...
+                            ⚠️ Error al conectar con las hojas de producción. Reintentando...
                         </td>
                     </tr>`;
             }
@@ -239,31 +236,56 @@
             let htmlFilas = "";
             let bloqueActual = "PRODUCCIÓN";
 
-            // Recorremos las filas omitiendo los encabezados estéticos
-            for (let i = 2; i < lineas.length; i++) {
+            // Empezamos el recorrido analizando la estructura humana del Sheets
+            for (let i = 0; i < lineas.length; i++) {
                 if (!lineas[i].trim()) continue;
 
-                // Separar por comas respetando celdas que contienen comas internas (como descripciones largas)
+                // Separar celdas respetando comas internas (como las notas de OBS)
                 const celdas = lineas[i].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(c => c.replace(/"/g, '').trim());
 
-                // Detener el lector si llega a la sección inferior de firmas o encargados finales
+                // Omitir las líneas de encabezados generales del documento
+                if (celdas[0] === "HORA INICIO" || celdas[0] === "CRONOGRAMA" || celdas[0] === "SERVICIO") continue;
+
+                // Detener la lectura por completo si el script detecta las tablas finales de encargados
                 if (celdas[0] === "ÁREA" || celdas[1] === "ENCARGADOS" || celdas[0] === "RESPONSABLE") break;
 
-                // DETECCIÓN AUTOMÁTICA DE BLOQUES DE COLOR (TÍTULOS INTERMEDIOS)
-                // Si la celda de inicio tiene texto largo (el título del bloque) y duración y actividad están vacías
-                if (celdas[0] && !celdas[1] && !celdas[3]) {
+                // DETECCIÓN INTELIGENTE DE TÍTULOS DE BLOQUE (Barras de colores intermedios)
+                // Si la primera celda tiene el nombre del bloque, pero las de duración y actividad están totalmente vacías
+                if (celdas[0] && !celdas[1] && !celdas[3] && !celdas[4] && !celdas[5]) {
                     bloqueActual = celdas[0];
-                    continue; // No la agregamos como tarea, la guardamos como el bloque activo actual
+                    continue; 
                 }
 
-                // Si detecta una fila de contenido válida (Hora inicio y Actividad presentes)
-                if (celdas[0] && celdas[3]) {
-                    const horaInicio = celdas[0];
-                    const duracion = celdas[1] || "";
-                    const horaFinal = celdas[2] || "";
-                    const actividad = celdas[3];
-                    const descripcion = celdas[4] || "";
+                // BUSCADOR FLEXIBLE DE ACTIVIDADES (Solución al desplazamiento de celdas vacías)
+                // Buscamos dinámicamente un campo que tenga texto y que no sea una hora ni una duración
+                let horaInicio = celdas[0] || "";
+                let duracion = celdas[1] || "";
+                let horaFinal = celdas[2] || "";
+                
+                let actividad = "";
+                let descripcion = "";
 
+                // Si hay datos desplazados más a la derecha debido a la estructura visual de las celdas de Excel
+                if (celdas[3] && celdas[3].length > 0) {
+                    actividad = celdas[3];
+                    descripcion = celdas[4] || "";
+                } else if (celdas[5] && celdas[5].length > 0) {
+                    // Si el CSV empujó la actividad por celdas combinadas ocultas
+                    actividad = celdas[5];
+                    descripcion = celdas[6] || "";
+                } else {
+                    // Buscar el primer bloque de texto disponible en la fila
+                    for(let j = 3; j < celdas.length; j++) {
+                        if(celdas[j]) {
+                            actividad = celdas[j];
+                            descripcion = celdas[j+1] || "";
+                            break;
+                        }
+                    }
+                }
+
+                // Si encontramos una actividad válida, la pintamos de inmediato
+                if (actividad && actividad !== bloqueActual) {
                     htmlFilas += `
                         <tr>
                             <td class="time-cell">${horaInicio} ${horaFinal ? '- ' + horaFinal : ''}</td>
@@ -276,7 +298,7 @@
                 }
             }
 
-            tablaBody.innerHTML = htmlFilas || `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 40px;">No hay eventos en esta sección.</td></tr>`;
+            tablaBody.innerHTML = htmlFilas || `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 40px;">No hay eventos en este bloque en este momento.</td></tr>`;
         }
 
         function obtenerClaseBloque(bloque) {
@@ -294,13 +316,13 @@
             document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
             boton.classList.add('active');
             
-            document.getElementById("cronograma-body").innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 40px;">Cargando bloque técnico...</td></tr>`;
+            document.getElementById("cronograma-body").innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 40px;">Cargando bloque de producción...</td></tr>`;
             obtenerDatosCSV();
         }
 
         window.onload = () => {
             obtenerDatosCSV();
-            // Polling dinámico idéntico al teleprompter: verifica actualizaciones silenciosas cada 15 segundos
+            // Verifica actualizaciones en el Sheets cada 15 segundos sin importar el día de la semana
             setInterval(obtenerDatosCSV, 15000);
         };
     </script>
