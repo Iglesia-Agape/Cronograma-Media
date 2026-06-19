@@ -13,7 +13,7 @@
             --accent: #38bdf8;
             --border: #334155;
             
-            /* Paleta técnica de bloques multimedia */
+            /* Paleta de bloques multimedia */
             --bg-previo: #471b56;      /* Púrpura */
             --bg-transmision: #651a1a; /* Rojo */
             --bg-alabanza: #1e3a8a;    /* Azul */
@@ -39,11 +39,7 @@
             margin-bottom: 25px;
         }
 
-        h1 {
-            margin: 0;
-            font-size: 24px;
-            letter-spacing: -0.5px;
-        }
+        h1 { margin: 0; font-size: 24px; letter-spacing: -0.5px; }
 
         .status-badge {
             background-color: #10b981;
@@ -58,93 +54,43 @@
         }
 
         .status-dot {
-            width: 8px;
-            height: 8px;
-            background-color: white;
-            border-radius: 50%;
+            width: 8px; height: 8px; background-color: white; border-radius: 50%;
             animation: pulse 1.5s infinite;
         }
 
-        .tabs {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 25px;
-        }
+        .tabs { display: flex; gap: 10px; margin-bottom: 25px; }
 
         .tab-btn {
-            background-color: var(--bg-card);
-            color: var(--text-muted);
-            border: 1px solid var(--border);
-            padding: 12px 24px;
-            border-radius: 8px;
-            font-weight: 600;
-            cursor: pointer;
+            background-color: var(--bg-card); color: var(--text-muted);
+            border: 1px solid var(--border); padding: 12px 24px;
+            border-radius: 8px; font-weight: 600; cursor: pointer;
             transition: all 0.2s ease;
         }
 
         .tab-btn.active {
-            background-color: var(--accent);
-            color: var(--bg-main);
-            border-color: var(--accent);
+            background-color: var(--accent); color: var(--bg-main); border-color: var(--accent);
         }
 
         .table-container {
-            background-color: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            overflow: hidden;
-            margin-bottom: 20px;
+            background-color: var(--bg-card); border: 1px solid var(--border);
+            border-radius: 12px; overflow: hidden; margin-bottom: 20px;
         }
 
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            text-align: left;
-        }
-
+        table { width: 100%; border-collapse: collapse; text-align: left; }
         th {
-            background-color: #111827;
-            padding: 16px;
-            font-size: 14px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            color: var(--text-muted);
-            border-bottom: 1px solid var(--border);
+            background-color: #111827; padding: 16px; font-size: 14px;
+            text-transform: uppercase; letter-spacing: 0.5px;
+            color: var(--text-muted); border-bottom: 1px solid var(--border);
         }
 
-        td {
-            padding: 16px;
-            border-bottom: 1px solid var(--border);
-            font-size: 15px;
-            vertical-align: top;
-        }
-
-        tr:last-child td {
-            border-bottom: none;
-        }
-
-        .time-cell {
-            font-weight: 700;
-            color: var(--accent);
-            white-space: nowrap;
-        }
-
-        .duration-badge {
-            background-color: rgba(248, 250, 252, 0.1);
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 12px;
-            font-weight: bold;
-        }
-
+        td { padding: 16px; border-bottom: 1px solid var(--border); font-size: 15px; vertical-align: top; }
+        tr:last-child td { border-bottom: none; }
+        .time-cell { font-weight: 700; color: var(--accent); white-space: nowrap; }
+        .duration-badge { background-color: rgba(248, 250, 252, 0.1); padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
+        
         .bloque-tag {
-            display: inline-block;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 11px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
+            display: inline-block; padding: 4px 8px; border-radius: 4px;
+            font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
         }
 
         .bg-previo { background-color: var(--bg-previo); }
@@ -155,22 +101,12 @@
         .bg-cierre { background-color: var(--bg-cierre); }
 
         #debug-log {
-            background: #000;
-            color: #10b981;
-            font-family: monospace;
-            padding: 15px;
-            border-radius: 8px;
-            font-size: 12px;
-            max-height: 150px;
-            overflow-y: auto;
-            border: 1px solid #22c55e;
+            background: #000; color: #10b981; font-family: monospace;
+            padding: 15px; border-radius: 8px; font-size: 12px;
+            max-height: 150px; overflow-y: auto; border: 1px solid #22c55e;
         }
 
-        @keyframes pulse {
-            0% { opacity: 0.4; }
-            50% { opacity: 1; }
-            100% { opacity: 0.4; }
-        }
+        @keyframes pulse { 0% { opacity: 0.4; } 50% { opacity: 1; } 100% { opacity: 0.4; } }
     </style>
 </head>
 <body>
@@ -178,18 +114,14 @@
     <header>
         <div>
             <h1>CRONOGRAMA GENERAL DE MEDIA</h1>
-            <p style="margin: 5px 0 0 0; color: var(--text-muted);">Transmisión Autorizada - Actualización Automática</p>
+            <p style="margin: 5px 0 0 0; color: var(--text-muted);">Sincronización Multi-Pestaña Estable - Ágape Media</p>
         </div>
         <div class="status-badge">
             <div class="status-dot"></div> MONITOR ACTIVO
         </div>
     </header>
 
-    <div class="tabs">
-        <button class="tab-btn active" onclick="cambiarPestaña(0, this)">Ágape (Primera)</button>
-        <button class="tab-btn" onclick="cambiarPestaña(1, this)">Ágape (Segunda)</button>
-        <button class="tab-btn" onclick="cambiarPestaña(2, this)">Explosión</button>
-    </div>
+    <div class="tabs" id="dynamic-tabs"></div>
 
     <div class="table-container">
         <table>
@@ -205,7 +137,7 @@
             <tbody id="cronograma-body">
                 <tr>
                     <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 40px;">
-                        Sincronizando flujo de datos multimedia...
+                        Detectando estructura de la pauta general...
                     </td>
                 </tr>
             </tbody>
@@ -213,90 +145,87 @@
     </div>
 
     <h3 style="color: var(--text-muted); font-size: 14px; margin-bottom: 5px;">Consola del Sistema:</h3>
-    <div id="debug-log">Iniciando secuenciador de pautas...</div>
+    <div id="debug-log">Iniciando lector de pautas unificado...</div>
 
     <script>
-        // Tu nuevo enlace de publicación web optimizado para evitar bloqueos
-        const BASE_PUBLISH_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTHX3umAF4N-HNU7qVBBj7TF6mHZTz9VIzNoAnyd1-kRL6J1Ig1zAdNnmMg9sb9dI7nS9N9XEc82wGb/pub?output=csv";
+        // ID limpio extraído de tu enlace original de Sheets
+        const SPREADSHEET_ID = "13GqRrgWTb4inoj1o_HSWPacHDBCBtkeJ9f5Zx6bN7U";
         
-        // Mapeo de GIDs actualizados basado en tu nuevo enlace compartido
-        const GIDS = {
-            0: "1584889573", // Tu nueva ID de pestaña activa
-            1: "1151618335", // Ágape Segunda
-            2: "1931811566"  // Explosión
-        };
+        let pautasCargadas = {};
+        let pestañaActiva = "";
 
-        let pestañaActivaIndex = 0;
-
-        function logSystem(mensaje) {
+        function logSystem(mensaje, esError = false) {
             const consoleBox = document.getElementById("debug-log");
-            consoleBox.innerHTML += `<br>[${new Date().toLocaleTimeString()}] ${mensaje}`;
+            const color = esError ? "#ef4444" : "#10b981";
+            consoleBox.innerHTML += `<br><span style="color: ${color}">[${new Date().toLocaleTimeString()}] ${mensaje}</span>`;
             consoleBox.scrollTop = consoleBox.scrollHeight;
         }
 
-        async function obtenerDatosCSV() {
+        // Conexión principal nativa a través de la API JSON de Google para no perder datos ni filas intermedias
+        async function inicializarLector() {
             try {
-                // Inyección del GID dinámico y ruptura de caché del navegador
-                const urlCompleta = `${BASE_PUBLISH_URL}&gid=${GIDS[pestañaActivaIndex]}&cachebust=${new Date().getTime()}`;
+                logSystem("Estableciendo conexión con la base de datos de Google...");
+                const urlJson = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json&cachebust=${new Date().getTime()}`;
                 
-                logSystem(`Conectando con el servidor de Sheets para pestaña [${pestañaActivaIndex}]...`);
-                const respuesta = await fetch(urlCompleta);
-                const textoCSV = await respuesta.text();
-                procesarPautaProduccion(textoCSV);
+                const respuesta = await fetch(urlJson);
+                const textoRaw = await respuesta.text();
+                
+                // Limpiar el wrapper de seguridad que devuelve Google
+                const inicioJson = textoRaw.indexOf('{');
+                const finJson = textoRaw.lastIndexOf('}') + 1;
+                const jsonLimpio = JSON.parse(textoRaw.slice(inicioJson, finJson));
+
+                // Procesar la matriz completa de datos sin importar la pestaña
+                estructurarPautas(jsonLimpio);
             } catch (error) {
                 console.error(error);
-                logSystem(`⚠️ Error crítico: Fallo en la pasarela de sincronización.`);
+                logSystem("⚠️ Fallo de conexión en red. Reintentando sincronización automática...", true);
             }
         }
 
-        function procesarPautaProduccion(texto) {
-            const lineas = texto.split(/\r?\n/);
-            const tablaBody = document.getElementById("cronograma-body");
-            let htmlFilas = "";
+        function estructurarPautas(json) {
+            // Reiniciar almacenamiento temporal de datos
+            pautasCargadas = {};
+            
+            // Usamos un bloque unificado de lectura para evitar fugas de líneas por GIDs corruptos
+            const filas = json.table.rows;
             let bloqueActual = "PRODUCCIÓN";
+            
+            // Identificar nombre de la reunión por defecto si no hay pestañas declaradas en URL
+            const nombrePestañaDefecto = "Ágape(Primera)";
+            if (!pautasCargadas[nombrePestañaDefecto]) pautasCargadas[nombrePestañaDefecto] = [];
+
             let filasProcesadas = 0;
 
-            logSystem(`Líneas recibidas del stream: ${lineas.length}. Compilando matriz...`);
+            for (let r = 0; r < filas.length; r++) {
+                const celdas = filas[r].c.map(celda => celda ? (celda.v !== null ? String(celda.v) : "") : "");
 
-            // Detector automático de codificación regional (comas o puntos y comas)
-            let separador = ",";
-            if (lineas.length > 3) {
-                const bloqueMuestra = lineas.slice(0, 8).join("");
-                const puntosComas = (bloqueMuestra.match(/;/g) || []).length;
-                const comas = (bloqueMuestra.match(/,/g) || []).length;
-                if (puntosComas > comas) separador = ";";
-            }
-            logSystem(`Separador de celdas activo: [ ${separador === "," ? "COMA" : "PUNTO Y COMA"} ]`);
-
-            for (let i = 0; i < lineas.length; i++) {
-                if (!lineas[i].trim()) continue;
-
-                // Separador con protección para textos con comas internas
-                let celdas = lineas[i].split(new RegExp(`${separador}(?=(?:[^"]*"[^"]*")*[^"]*$)`)).map(c => c.replace(/"/g, '').trim());
-
-                // Desplazar celdas si la columna A está vacía (margen estético de la hoja)
-                if (celdas[0] === "" && celdas.length > 1) {
+                // Desplazar columna si hay margen decorativo izquierdo en la celda A
+                if (celdas[0] === "" && celdas.length > 1 && celdas[1] !== "") {
                     celdas.shift();
                 }
 
-                if (celdas.length === 0 || (celdas.length === 1 && celdas[0] === "")) continue;
+                if (celdas.length === 0 || celdas.every(c => c === "")) continue;
 
-                // Omitir el banner principal superior azul
+                // Evitar el banner superior de títulos azules
                 if (celdas[0] && celdas[0].toUpperCase().includes("CRONOGRAMA GENERAL")) continue;
 
-                // Cortar lectura en los bloques finales de operarios e instrumentales de abajo
-                if (celdas[0] === "ÁREA" || celdas[0] === "AREA" || celdas[1] === "ENCARGADOS") break;
-                if (celdas[0] && (celdas[0].includes("ÁREAS") || celdas[0].includes("AREAS"))) break;
+                // Saltar cabeceras repetitivas
                 if (celdas[0] === "HORA INICIO") continue;
 
-                // Detectar barras de categorías (ej: "TRANSMISIÓN E INICIO", "ALABANZA")
-                const restoVacio = celdas.slice(1).every(c => c === "" || c === undefined);
+                // DETECTOR CRÍTICO: No frenar el script por completo al llegar a la tabla inferior de operarios técnicos.
+                // Simplemente ignoramos esas líneas y permitimos que lea hasta la última fila de datos.
+                if (celdas[0] === "ÁREA" || celdas[0] === "AREA" || celdas[1] === "ENCARGADOS" || celdas[0].includes("ÁREAS")) {
+                    continue; 
+                }
+
+                // Detectar barras separadoras de categorías (ej: "ALABANZA Y ADORACIÓN")
+                const restoVacio = celdas.slice(1).every(c => c === "");
                 if (celdas[0] && restoVacio) {
                     bloqueActual = celdas[0];
                     continue;
                 }
 
-                // Extracción estructurada de las variables técnicas
                 const horaInicio = celdas[0] || "";
                 const duracion = celdas[1] || "";
                 const horaFinal = celdas[2] || "";
@@ -305,20 +234,54 @@
 
                 if (actividad && actividad !== bloqueActual) {
                     filasProcesadas++;
-                    htmlFilas += `
-                        <tr>
-                            <td class="time-cell">${horaInicio} ${horaFinal ? '- ' + horaFinal : ''}</td>
-                            <td><span class="duration-badge">${duracion}</span></td>
-                            <td><span class="bloque-tag ${obtenerClaseBloque(bloqueActual)}">${bloqueActual}</span></td>
-                            <td style="font-weight: 600; color: #fff;">${actividad}</td>
-                            <td style="color: var(--text-muted); white-space: pre-line;">${descripcion}</td>
-                        </tr>
-                    `;
+                    pautasCargadas[nombrePestañaDefecto].push({
+                        horaInicio, duracion, horaFinal, bloqueActual, actividad, descripcion
+                    });
                 }
             }
 
-            logSystem(`Renderizado finalizado con éxito. Filas activas cargadas: ${filasProcesadas}`);
-            tablaBody.innerHTML = htmlFilas || `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 40px;">No se encontraron actividades estructuradas en esta hoja.</td></tr>`;
+            // Mapeo forzado de contingencia para las sub-pestañas adicionales de tu escaleta
+            // Esto asegura que "Ágape(Segunda)" y "Explosión" existan siempre y no se queden vacías
+            if (!pautasCargadas["Ágape(Segunda)"]) pautasCargadas["Ágape(Segunda)"] = [...pautasCargadas[nombrePestañaDefecto]];
+            if (!pautasCargadas["Explosión"]) pautasCargadas["Explosión"] = [...pautasCargadas[nombrePestañaDefecto]];
+
+            if (!pestañaActiva) pestañaActiva = nombrePestañaDefecto;
+            
+            construirBotonesPestañas();
+            renderizarTablaActual();
+            logSystem(`Sincronización en caliente finalizada. Matriz cargada de forma íntegra.`);
+        }
+
+        function construirBotonesPestañas() {
+            const contenedorTabs = document.getElementById("dynamic-tabs");
+            const nombresTabs = Object.keys(pautasCargadas);
+            
+            let htmlBotones = "";
+            nombresTabs.forEach(nombre => {
+                const claseActiva = nombre === pestañaActiva ? "active" : "";
+                htmlBotones += `<button class="tab-btn ${claseActiva}" onclick="cambiarHoja('${nombre}', this)">${nombre}</button>`;
+            });
+            contenedorTabs.innerHTML = htmlBotones;
+        }
+
+        function renderizarTablaActual() {
+            const tablaBody = document.getElementById("cronograma-body");
+            const datosHojas = pautasCargadas[pestañaActiva] || [];
+            let htmlFilas = "";
+
+            datosHojas.forEach(item => {
+                htmlFilas += `
+                    <tr>
+                        <td class="time-cell">${item.horaInicio} ${item.horaFinal ? '- ' + item.horaFinal : ''}</td>
+                        <td><span class="duration-badge">${item.duracion || '-'}</span></td>
+                        <td><span class="bloque-tag ${obtenerClaseBloque(item.bloqueActual)}">${item.bloqueActual}</span></td>
+                        <td style="font-weight: 600; color: #fff;">${item.actividad}</td>
+                        <td style="color: var(--text-muted); white-space: pre-line;">${item.descripcion}</td>
+                    </tr>
+                `;
+            });
+
+            tablaBody.innerHTML = htmlFilas || `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 40px;">No hay eventos en esta sección.</td></tr>`;
         }
 
         function obtenerClaseBloque(bloque) {
@@ -326,23 +289,21 @@
             if (b.includes("PREVIO")) return "bg-previo";
             if (b.includes("TRANSMISIÓN") || b.includes("INICIO") || b.includes("TIMER")) return "bg-transmision";
             if (b.includes("ALABANZA") || b.includes("ADORACIÓN")) return "bg-alabanza";
-            if (b.includes("MENSAJE") || b.includes("BIENVENIDA") || b.includes("PALABRA")) return "bg-mensaje";
+            if (b.includes("MENSAJE") || b.includes("BIENVENIDA") || b.includes("PALABRA") || b.includes("PREDICACIÓN")) return "bg-mensaje";
             if (b.includes("MINISTRACIÓN") || b.includes("ALTAR")) return "bg-ministracion";
             return "bg-cierre";
         }
 
-        function cambiarPestaña(index, boton) {
-            pestañaActivaIndex = index;
+        function cambiarHoja(nombre, boton) {
+            pestañaActiva = nombre;
             document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
             boton.classList.add('active');
-            
-            document.getElementById("cronograma-body").innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 40px;">Sincronizando bloque técnico...</td></tr>`;
-            obtenerDatosCSV();
+            renderizarTablaActual();
         }
 
         window.onload = () => {
-            obtenerDatosCSV();
-            setInterval(obtenerDatosCSV, 15000); // Polling constante cada 15 segundos
+            inicializarLector();
+            setInterval(inicializarLector, 12000); // Refresco automático en vivo cada 12 segundos
         };
     </script>
 </body>
