@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cronograma de Producción - Ágape Media</title>
+    <style>
+        :root {
+            --bg-main: #0f172a;
+            --bg-card: #1e293b;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent: #38bdf8;
+            --border: #334155;
+            
+            /* Colores de bloques ajustados a tu producción en vivo */
+            --bg-previo: #471b56;      /* Púrpura oscuro */
+            --bg-transmision: #651a1a; /* Rojo transmisión */
+            --bg-alabanza: #1e3a8a;    /* Azul Alabanza */
+            --bg-mensaje: #7c2d12;     /* Naranja/Café Mensaje */
+            --bg-ministracion: #064e3b;/* Verde Ministración */
+            --bg-cierre: #334155;      /* Gris control */
+        }
+
+        body {
+            margin: 0;
+            padding: 20px;
+            background-color: var(--bg-main);
+            color: var(--text-main);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 20px;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 25px;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 24px;
+            letter-spacing: -0.5px;
+        }
+
+        .status-badge {
+            background-color: #10b981;
+            color: #ffffff;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background-color: white;
+            border-radius: 50%;
+            animation: pulse 1.5s infinite;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 25px;
+        }
+
+        .tab-btn {
+            background-color: var(--bg-card);
+            color: var(--text-muted);
+            border: 1px solid var(--border);
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .tab-btn.active {
+            background-color: var(--accent);
+            color: var(--bg-main);
+            border-color: var(--accent);
+        }
+
+        .table-container {
+            background-color: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+        }
+
+        th {
+            background-color: #111827;
+            padding: 16px;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            border-bottom: 1px solid var(--border);
+        }
+
+        td {
+            padding: 16px;
+            border-bottom: 1px solid var(--border);
+            font-size: 15px;
+            vertical-align: top;
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        .time-cell {
+            font-weight: 700;
+            color: var(--accent);
+            white-space: nowrap;
+        }
+
+        .duration-badge {
+            background-color: rgba(248, 250, 252, 0.1);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .bloque-tag {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .bg-previo { background-color: var(--bg-previo); }
+        .bg-transmision { background-color: var(--bg-transmision); }
+        .bg-alabanza { background-color: var(--bg-alabanza); }
+        .bg-mensaje { background-color: var(--bg-mensaje); }
+        .bg-ministracion { background-color: var(--bg-ministracion); }
+        .bg-cierre { background-color: var(--bg-cierre); }
+
+        @keyframes pulse {
+            0% { opacity: 0.4; }
+            50% { opacity: 1; }
+            100% { opacity: 0.4; }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div>
+            <h1>CRONOGRAMA GENERAL DE MEDIA</h1>
+            <p style="margin: 5px 0 0 0; color: var(--text-muted);">Sincronizado desde tu Google Sheets en tiempo real</p>
+        </div>
+        <div class="status-badge">
+            <div class="status-dot"></div> EN VIVO
+        </div>
+    </header>
+
+    <div class="tabs">
+        <button class="tab-btn active" onclick="cambiarPestaña(0, this)">Ágape (Primera)</button>
+        <button class="tab-btn" onclick="cambiarPestaña(1, this)">Ágape (Segunda)</button>
+        <button class="tab-btn" onclick="cambiarPestaña(2, this)">Explosión</button>
+    </div>
+
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 15%">Horario</th>
+                    <th style="width: 10%">Duración</th>
+                    <th style="width: 20%">Bloque</th>
+                    <th style="width: 25%">Actividad</th>
+                    <th style="width: 30%">Descripción / Notas de Control</th>
+                </tr>
+            </thead>
+            <tbody id="cronograma-body">
+                <tr>
+                    <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 40px;">
+                        Conectando con el servidor de Sheets...
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        // Tu enlace base de publicación CSV original modificado dinámicamente para aceptar gids
+        const BASE_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTHX3umAF4N-HNU7qVBBj7TF6mHZTz9VIzNoAnyd1-kRL6J1Ig1zAdNnmMg9sb9dI7nS9N9XEc82wGb/pub?output=csv";
+        
+        // Identificadores internos únicos de tus pestañas actuales
+        // NOTA: Si notas que al cambiar de pestaña te repite los mismos datos, ve a tu Google Sheets en el navegador,
+        // haz clic en cada pestaña abajo y mira el número final en la barra de direcciones (ej: gid=1481923)
+        // Colócalos aquí en orden si no te cargan hojas diferentes:
+        const GIDS = {
+            0: "0",          /* GID por defecto para la primera pestaña */
+            1: "1151618335", /* ID estimado para la segunda pestaña */
+            2: "1931811566"  /* ID estimado para la tercera pestaña */
+        };
+
+        let pestañaActivaIndex = 0;
+
+        async function obtenerDatosCSV() {
+            try {
+                // Forzamos la descarga de la pestaña específica agregando el parámetro gid y un timestamp para evitar caché de red
+                const urlConGid = `${BASE_CSV_URL}&gid=${GIDS[pestañaActivaIndex]}&cachebust=${new Date().getTime()}`;
+                const respuesta = await fetch(urlConGid);
+                const textoCSV = await respuesta.text();
+                procesarEstructuraOriginal(textoCSV);
+            } catch (error) {
+                console.error("Error sincronizando transmisión:", error);
+                document.getElementById("cronograma-body").innerHTML = `
+                    <tr>
+                        <td colspan="5" style="text-align: center; color: #ef4444; padding: 20px;">
+                            ⚠️ Error de sincronización en vivo. Intentando reconectar de forma automática...
+                        </td>
+                    </tr>`;
+            }
+        }
+
+        function procesarEstructuraOriginal(texto) {
+            const lineas = texto.split(/\r?\n/);
+            const tablaBody = document.getElementById("cronograma-body");
+            let htmlFilas = "";
+            let bloqueActual = "PRODUCCIÓN";
+
+            // Recorremos las filas omitiendo los encabezados estéticos
+            for (let i = 2; i < lineas.length; i++) {
+                if (!lineas[i].trim()) continue;
+
+                // Separar por comas respetando celdas que contienen comas internas (como descripciones largas)
+                const celdas = lineas[i].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(c => c.replace(/"/g, '').trim());
+
+                // Detener el lector si llega a la sección inferior de firmas o encargados finales
+                if (celdas[0] === "ÁREA" || celdas[1] === "ENCARGADOS" || celdas[0] === "RESPONSABLE") break;
+
+                // DETECCIÓN AUTOMÁTICA DE BLOQUES DE COLOR (TÍTULOS INTERMEDIOS)
+                // Si la celda de inicio tiene texto largo (el título del bloque) y duración y actividad están vacías
+                if (celdas[0] && !celdas[1] && !celdas[3]) {
+                    bloqueActual = celdas[0];
+                    continue; // No la agregamos como tarea, la guardamos como el bloque activo actual
+                }
+
+                // Si detecta una fila de contenido válida (Hora inicio y Actividad presentes)
+                if (celdas[0] && celdas[3]) {
+                    const horaInicio = celdas[0];
+                    const duracion = celdas[1] || "";
+                    const horaFinal = celdas[2] || "";
+                    const actividad = celdas[3];
+                    const descripcion = celdas[4] || "";
+
+                    htmlFilas += `
+                        <tr>
+                            <td class="time-cell">${horaInicio} ${horaFinal ? '- ' + horaFinal : ''}</td>
+                            <td><span class="duration-badge">${duracion}</span></td>
+                            <td><span class="bloque-tag ${obtenerClaseBloque(bloqueActual)}">${bloqueActual}</span></td>
+                            <td style="font-weight: 600; color: #fff;">${actividad}</td>
+                            <td style="color: var(--text-muted); white-space: pre-line;">${descripcion}</td>
+                        </tr>
+                    `;
+                }
+            }
+
+            tablaBody.innerHTML = htmlFilas || `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 40px;">No hay eventos en esta sección.</td></tr>`;
+        }
+
+        function obtenerClaseBloque(bloque) {
+            const b = bloque.toUpperCase();
+            if (b.includes("PREVIO")) return "bg-previo";
+            if (b.includes("TRANSMISIÓN") || b.includes("INICIO") || b.includes("TIMER")) return "bg-transmision";
+            if (b.includes("ALABANZA") || b.includes("ADORACIÓN")) return "bg-alabanza";
+            if (b.includes("MENSAJE") || b.includes("BIENVENIDA") || b.includes("PALABRA")) return "bg-mensaje";
+            if (b.includes("MINISTRACIÓN") || b.includes("ALTAR")) return "bg-ministracion";
+            return "bg-cierre";
+        }
+
+        function cambiarPestaña(index, boton) {
+            pestañaActivaIndex = index;
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            boton.classList.add('active');
+            
+            document.getElementById("cronograma-body").innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 40px;">Cargando bloque técnico...</td></tr>`;
+            obtenerDatosCSV();
+        }
+
+        window.onload = () => {
+            obtenerDatosCSV();
+            // Polling dinámico idéntico al teleprompter: verifica actualizaciones silenciosas cada 15 segundos
+            setInterval(obtenerDatosCSV, 15000);
+        };
+    </script>
+</body>
+</html>
