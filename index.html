@@ -13,7 +13,7 @@
             --accent: #38bdf8;
             --border: #334155;
             
-            /* Paleta de bloques multimedia */
+            /* Paleta multimedia */
             --bg-previo: #471b56;      /* Púrpura */
             --bg-transmision: #651a1a; /* Rojo */
             --bg-alabanza: #1e3a8a;    /* Azul */
@@ -114,14 +114,18 @@
     <header>
         <div>
             <h1>CRONOGRAMA GENERAL DE MEDIA</h1>
-            <p style="margin: 5px 0 0 0; color: var(--text-muted);">Sincronización Multi-Pestaña Estable - Ágape Media</p>
+            <p style="margin: 5px 0 0 0; color: var(--text-muted);">Sincronización Avanzada Multi-Pestaña</p>
         </div>
         <div class="status-badge">
             <div class="status-dot"></div> MONITOR ACTIVO
         </div>
     </header>
 
-    <div class="tabs" id="dynamic-tabs"></div>
+    <div class="tabs">
+        <button class="tab-btn active" onclick="cambiarPestaña(0, this)">Ágape (Primera)</button>
+        <button class="tab-btn" onclick="cambiarPestaña(1, this)">Ágape (Segunda)</button>
+        <button class="tab-btn" onclick="cambiarPestaña(2, this)">Explosión</button>
+    </div>
 
     <div class="table-container">
         <table>
@@ -137,7 +141,7 @@
             <tbody id="cronograma-body">
                 <tr>
                     <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 40px;">
-                        Detectando estructura de la pauta general...
+                        Cargando flujo de datos multimedia...
                     </td>
                 </tr>
             </tbody>
@@ -145,14 +149,20 @@
     </div>
 
     <h3 style="color: var(--text-muted); font-size: 14px; margin-bottom: 5px;">Consola del Sistema:</h3>
-    <div id="debug-log">Iniciando lector de pautas unificado...</div>
+    <div id="debug-log">Iniciando secuenciador de pautas...</div>
 
     <script>
-        // ID limpio extraído de tu enlace original de Sheets
-        const SPREADSHEET_ID = "13GqRrgWTb4inoj1o_HSWPacHDBCBtkeJ9f5Zx6bN7U";
+        // Enlace base compartido
+        const BASE_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTHX3umAF4N-HNU7qVBBj7TF6mHZTz9VIzNoAnyd1-kRL6J1Ig1zAdNnmMg9sb9dI7nS9N9XEc82wGb/pub?output=csv";
         
-        let pautasCargadas = {};
-        let pestañaActiva = "";
+        // Mapeo exacto de los IDs de cada una de tus pestañas
+        const GIDS = {
+            0: "1584889573", // Ágape(Primera)
+            1: "1151618335", // Ágape(Segunda)
+            2: "1931811566"  // Explosión
+        };
+
+        let pestañaActivaIndex = 0;
 
         function logSystem(mensaje, esError = false) {
             const consoleBox = document.getElementById("debug-log");
@@ -161,66 +171,63 @@
             consoleBox.scrollTop = consoleBox.scrollHeight;
         }
 
-        // Conexión principal nativa a través de la API JSON de Google para no perder datos ni filas intermedias
-        async function inicializarLector() {
+        async function obtenerDatosCSV() {
             try {
-                logSystem("Estableciendo conexión con la base de datos de Google...");
-                const urlJson = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json&cachebust=${new Date().getTime()}`;
+                // Forzamos la descarga del CSV limpio por pestaña rompiendo la caché
+                const urlCompleta = `${BASE_URL}&gid=${GIDS[pestañaActivaIndex]}&single=true&cachebust=${new Date().getTime()}`;
                 
-                const respuesta = await fetch(urlJson);
-                const textoRaw = await respuesta.text();
-                
-                // Limpiar el wrapper de seguridad que devuelve Google
-                const inicioJson = textoRaw.indexOf('{');
-                const finJson = textoRaw.lastIndexOf('}') + 1;
-                const jsonLimpio = JSON.parse(textoRaw.slice(inicioJson, finJson));
-
-                // Procesar la matriz completa de datos sin importar la pestaña
-                estructurarPautas(jsonLimpio);
+                logSystem(`Solicitando pauta para pestaña index [${pestañaActivaIndex}]...`);
+                const respuesta = await fetch(urlCompleta);
+                const textoCSV = await respuesta.text();
+                procesarPautaProduccion(textoCSV);
             } catch (error) {
                 console.error(error);
-                logSystem("⚠️ Fallo de conexión en red. Reintentando sincronización automática...", true);
+                logSystem(`⚠️ Error de conexión al refrescar datos.`, true);
             }
         }
 
-        function estructurarPautas(json) {
-            // Reiniciar almacenamiento temporal de datos
-            pautasCargadas = {};
-            
-            // Usamos un bloque unificado de lectura para evitar fugas de líneas por GIDs corruptos
-            const filas = json.table.rows;
+        function procesarPautaProduccion(texto) {
+            const lineas = texto.split(/\r?\n/);
+            const tablaBody = document.getElementById("cronograma-body");
+            let htmlFilas = "";
             let bloqueActual = "PRODUCCIÓN";
-            
-            // Identificar nombre de la reunión por defecto si no hay pestañas declaradas en URL
-            const nombrePestañaDefecto = "Ágape(Primera)";
-            if (!pautasCargadas[nombrePestañaDefecto]) pautasCargadas[nombrePestañaDefecto] = [];
-
             let filasProcesadas = 0;
 
-            for (let r = 0; r < filas.length; r++) {
-                const celdas = filas[r].c.map(celda => celda ? (celda.v !== null ? String(celda.v) : "") : "");
+            logSystem(`Líneas recibidas del stream: ${lineas.length}. Compilando matriz...`);
 
-                // Desplazar columna si hay margen decorativo izquierdo en la celda A
-                if (celdas[0] === "" && celdas.length > 1 && celdas[1] !== "") {
+            // Detector automático de separador regional
+            let separador = ",";
+            if (lineas.length > 3) {
+                const bloqueMuestra = lineas.slice(0, 8).join("");
+                const puntosComas = (bloqueMuestra.match(/;/g) || []).length;
+                const comas = (bloqueMuestra.match(/,/g) || []).length;
+                if (puntosComas > comas) separador = ";";
+            }
+
+            for (let i = 0; i < lineas.length; i++) {
+                if (!lineas[i].trim()) continue;
+
+                let celdas = lineas[i].split(new RegExp(`${separador}(?=(?:[^"]*"[^"]*")*[^"]*$)`)).map(c => c.replace(/"/g, '').trim());
+
+                // Alineación por margen izquierdo vacío
+                if (celdas[0] === "" && celdas.length > 1) {
                     celdas.shift();
                 }
 
-                if (celdas.length === 0 || celdas.every(c => c === "")) continue;
+                if (celdas.length === 0 || (celdas.length === 1 && celdas[0] === "")) continue;
 
-                // Evitar el banner superior de títulos azules
+                // Omitir banners decorativos de títulos
                 if (celdas[0] && celdas[0].toUpperCase().includes("CRONOGRAMA GENERAL")) continue;
-
-                // Saltar cabeceras repetitivas
                 if (celdas[0] === "HORA INICIO") continue;
 
-                // DETECTOR CRÍTICO: No frenar el script por completo al llegar a la tabla inferior de operarios técnicos.
-                // Simplemente ignoramos esas líneas y permitimos que lea hasta la última fila de datos.
+                // CORRECCIÓN CRÍTICA: Ya NO usamos "break" al encontrar áreas de encargados técnicos abajo.
+                // Usamos "continue" para saltar la fila sin romper la lectura. Así NO se pierden los datos del final.
                 if (celdas[0] === "ÁREA" || celdas[0] === "AREA" || celdas[1] === "ENCARGADOS" || celdas[0].includes("ÁREAS")) {
                     continue; 
                 }
 
-                // Detectar barras separadoras de categorías (ej: "ALABANZA Y ADORACIÓN")
-                const restoVacio = celdas.slice(1).every(c => c === "");
+                // Detectar barras separadoras de categorías
+                const restoVacio = celdas.slice(1).every(c => c === "" || c === undefined);
                 if (celdas[0] && restoVacio) {
                     bloqueActual = celdas[0];
                     continue;
@@ -232,56 +239,23 @@
                 const actividad = celdas[3] || "";
                 const descripcion = celdas[4] || "";
 
+                // Solo renderizamos si hay una actividad real mapeada en la fila
                 if (actividad && actividad !== bloqueActual) {
                     filasProcesadas++;
-                    pautasCargadas[nombrePestañaDefecto].push({
-                        horaInicio, duracion, horaFinal, bloqueActual, actividad, descripcion
-                    });
+                    htmlFilas += `
+                        <tr>
+                            <td class="time-cell">${horaInicio} ${horaFinal ? '- ' + horaFinal : ''}</td>
+                            <td><span class="duration-badge">${duracion || '-'}</span></td>
+                            <td><span class="bloque-tag ${obtenerClaseBloque(bloqueActual)}">${bloqueActual}</span></td>
+                            <td style="font-weight: 600; color: #fff;">${actividad}</td>
+                            <td style="color: var(--text-muted); white-space: pre-line;">${descripcion}</td>
+                        </tr>
+                    `;
                 }
             }
 
-            // Mapeo forzado de contingencia para las sub-pestañas adicionales de tu escaleta
-            // Esto asegura que "Ágape(Segunda)" y "Explosión" existan siempre y no se queden vacías
-            if (!pautasCargadas["Ágape(Segunda)"]) pautasCargadas["Ágape(Segunda)"] = [...pautasCargadas[nombrePestañaDefecto]];
-            if (!pautasCargadas["Explosión"]) pautasCargadas["Explosión"] = [...pautasCargadas[nombrePestañaDefecto]];
-
-            if (!pestañaActiva) pestañaActiva = nombrePestañaDefecto;
-            
-            construirBotonesPestañas();
-            renderizarTablaActual();
-            logSystem(`Sincronización en caliente finalizada. Matriz cargada de forma íntegra.`);
-        }
-
-        function construirBotonesPestañas() {
-            const contenedorTabs = document.getElementById("dynamic-tabs");
-            const nombresTabs = Object.keys(pautasCargadas);
-            
-            let htmlBotones = "";
-            nombresTabs.forEach(nombre => {
-                const claseActiva = nombre === pestañaActiva ? "active" : "";
-                htmlBotones += `<button class="tab-btn ${claseActiva}" onclick="cambiarHoja('${nombre}', this)">${nombre}</button>`;
-            });
-            contenedorTabs.innerHTML = htmlBotones;
-        }
-
-        function renderizarTablaActual() {
-            const tablaBody = document.getElementById("cronograma-body");
-            const datosHojas = pautasCargadas[pestañaActiva] || [];
-            let htmlFilas = "";
-
-            datosHojas.forEach(item => {
-                htmlFilas += `
-                    <tr>
-                        <td class="time-cell">${item.horaInicio} ${item.horaFinal ? '- ' + item.horaFinal : ''}</td>
-                        <td><span class="duration-badge">${item.duracion || '-'}</span></td>
-                        <td><span class="bloque-tag ${obtenerClaseBloque(item.bloqueActual)}">${item.bloqueActual}</span></td>
-                        <td style="font-weight: 600; color: #fff;">${item.actividad}</td>
-                        <td style="color: var(--text-muted); white-space: pre-line;">${item.descripcion}</td>
-                    </tr>
-                `;
-            });
-
-            tablaBody.innerHTML = htmlFilas || `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 40px;">No hay eventos en esta sección.</td></tr>`;
+            logSystem(`Renderizado finalizado. Actividades inyectadas: ${filasProcesadas}`);
+            tablaBody.innerHTML = htmlFilas || `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 40px;">No se encontraron actividades estructuradas en esta hoja.</td></tr>`;
         }
 
         function obtenerClaseBloque(bloque) {
@@ -294,16 +268,18 @@
             return "bg-cierre";
         }
 
-        function cambiarHoja(nombre, boton) {
-            pestañaActiva = nombre;
+        function cambiarPestaña(index, boton) {
+            pestañaActivaIndex = index;
             document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
             boton.classList.add('active');
-            renderizarTablaActual();
+            
+            document.getElementById("cronograma-body").innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 40px;">Cargando bloque técnico...</td></tr>`;
+            obtenerDatosCSV();
         }
 
         window.onload = () => {
-            inicializarLector();
-            setInterval(inicializarLector, 12000); // Refresco automático en vivo cada 12 segundos
+            obtenerDatosCSV();
+            setInterval(obtenerDatosCSV, 15000); // Sincroniza en vivo cada 15 segundos
         };
     </script>
 </body>
