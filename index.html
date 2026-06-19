@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cronograma Media</title>
+    <title>Cronograma de Producción - Ágape Media</title>
     <style>
         :root {
             --bg-main: #0f172a;
@@ -178,7 +178,7 @@
     <header>
         <div>
             <h1>CRONOGRAMA GENERAL DE MEDIA</h1>
-            <p style="margin: 5px 0 0 0; color: var(--text-muted);">Lector Híbrido Multiregión - Sincronizado en tiempo real</p>
+            <p style="margin: 5px 0 0 0; color: var(--text-muted);">Lector Híbrido por Exportación de Hojas Individuales</p>
         </div>
         <div class="status-badge">
             <div class="status-dot"></div> MONITOR ACTIVO
@@ -205,7 +205,7 @@
             <tbody id="cronograma-body">
                 <tr>
                     <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 40px;">
-                        Detectando codificación de celdas...
+                        Inicializando descarga de datos técnicos...
                     </td>
                 </tr>
             </tbody>
@@ -216,12 +216,14 @@
     <div id="debug-log">Iniciando secuenciador de pautas...</div>
 
     <script>
-        const BASE_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTHX3umAF4N-HNU7qVBBj7TF6mHZTz9VIzNoAnyd1-kRL6J1Ig1zAdNnmMg9sb9dI7nS9N9XEc82wGb/pub?output=csv";
+        // Cambiamos al endpoint de exportación directa basado en tu ID de hoja real extraído de tus capturas
+        const SPREADSHEET_ID = "13GqRrgWTb4inoj1o_HSWPacHDBCBtkeJ9f5Zx6bN7U";
         
+        // Mapeo exacto de las pestañas
         const GIDS = {
-            0: "0",
-            1: "1151618335",
-            2: "1931811566"
+            0: "0",          // Ágape(Primera)
+            1: "1151618335", // Ágape(Segunda)
+            2: "1931811566"  // Explosión
         };
 
         let pestañaActivaIndex = 0;
@@ -234,18 +236,25 @@
 
         async function obtenerDatosCSV() {
             try {
-                const urlConGid = `${BASE_CSV_URL}&gid=${GIDS[pestañaActivaIndex]}&cachebust=${new Date().getTime()}`;
-                logSystem(`Consultando servidor Sheets para pestaña ${pestañaActivaIndex}...`);
-                const respuesta = await fetch(urlConGid);
+                // Endpoint alternativo de exportación directa que fuerza a Google a procesar el GID individualmente
+                const urlExport = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/export?format=csv&gid=${GIDS[pestañaActivaIndex]}&cachebust=${new Date().getTime()}`;
+                
+                logSystem(`Llamando API de exportación para pestaña ${pestañaActivaIndex}...`);
+                const respuesta = await fetch(urlExport);
+                
+                if (!respuesta.ok) {
+                    throw new Error(`HTTP error! status: ${respuesta.status}`);
+                }
+                
                 const textoCSV = await respuesta.text();
                 procesarEstructuraOriginal(textoCSV);
             } catch (error) {
                 console.error(error);
-                logSystem(`⚠️ Error de red: No se pudo conectar.`);
+                logSystem(`⚠️ Error: Acceso denegado o enlace roto. Verifica la publicación web.`);
                 document.getElementById("cronograma-body").innerHTML = `
                     <tr>
                         <td colspan="5" style="text-align: center; color: #ef4444; padding: 20px;">
-                            ⚠️ Error crítico de conexión. Reintentando...
+                            ⚠️ Error al descargar datos. Asegúrate de que el documento esté compartido como "Cualquiera con el enlace puede ver".
                         </td>
                     </tr>`;
             }
@@ -258,60 +267,49 @@
             let bloqueActual = "PRODUCCIÓN";
             let filasProcesadas = 0;
 
-            logSystem(`Líneas recibidas del Sheets: ${lineas.length}. Analizando formato...`);
+            logSystem(`Líneas recibidas del Sheets: ${lineas.length}. Procesando mapeo...`);
 
-            // DETECTOR AUTOMÁTICO DE SEPARADOR: ¿Coma o Punto y Coma?
+            if(lineas.length <= 2) {
+                logSystem(`⚠️ Alerta: Los datos recibidos son insuficientes. Verifica los permisos del archivo.`);
+            }
+
+            // Detector de separador de celdas
             let separador = ",";
             if (lineas.length > 1) {
                 const comas = (lineas[1].match(/,/g) || []).length;
                 const puntosComas = (lineas[1].match(/;/g) || []).length;
-                if (puntosComas > comas) {
-                    separador = ";";
-                    logSystem(`Configuración regional detectada: Usando separador [ PUNTO Y COMA ]`);
-                } else {
-                    logSystem(`Configuración regional detectada: Usando separador [ COMA ]`);
-                }
+                if (puntosComas > comas) separador = ";";
             }
+            logSystem(`Separador activo: [ ${separador === "," ? "COMA" : "PUNTO Y COMA"} ]`);
 
             for (let i = 0; i < lineas.length; i++) {
                 if (!lineas[i].trim()) continue;
 
-                // Separamos dinámicamente usando el separador detectado
-                let celdas = [];
-                if (separador === ";") {
-                    celdas = lineas[i].split(/;(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(c => c.replace(/"/g, '').trim());
-                } else {
-                    celdas = lineas[i].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(c => c.replace(/"/g, '').trim());
-                }
+                let celdas = lineas[i].split(new RegExp(`${separador}(?=(?:[^"]*"[^"]*")*[^"]*$)`)).map(c => c.replace(/"/g, '').trim());
 
-                // Desplazar si la columna A está vacía (margen decorativo)
+                // Remover columna B en blanco si es necesario (Margen estético izquierdo de tu hoja)
                 if (celdas[0] === "" && celdas.length > 1) {
                     celdas.shift();
                 }
 
                 if (!celdas[0] && celdas.length <= 1) continue;
 
-                // Omitir cabecera azul principal
+                // Omitir banner principal superior
                 if (celdas[0] && celdas[0].toUpperCase().includes("CRONOGRAMA GENERAL")) continue;
 
-                // Romper bucle si entramos a las tablas de los operarios técnicos abajo
-                if (celdas[0] === "ÁREA" || celdas[0] === "AREA" || celdas[1] === "ENCARGADOS") {
-                    logSystem(`Fin de pauta técnica alcanzado en fila ${i}. Ignorando operarios.`);
-                    break;
-                }
+                // Cortar lectura en los bloques de firmas y operarios de abajo
+                if (celdas[0] === "ÁREA" || celdas[0] === "AREA" || celdas[1] === "ENCARGADOS") break;
                 if (celdas[0] && (celdas[0].includes("ÁREAS") || celdas[0].includes("AREAS"))) break;
-
-                // Saltar cabeceras guía internas
                 if (celdas[0] === "HORA INICIO") continue;
 
-                // DETECCIÓN DE BLOQUE INTERMEDIO (Solo texto en la primera celda)
+                // Identificar barras de título de bloque intermedio
                 const restoVacio = celdas.slice(1).every(c => c === "");
                 if (celdas[0] && restoVacio) {
                     bloqueActual = celdas[0];
                     continue;
                 }
 
-                // EXTRACCIÓN ALINEADA DE DATOS
+                // Extracción de datos técnicos alineados de la pauta
                 const horaInicio = celdas[0] || "";
                 const duracion = celdas[1] || "";
                 const horaFinal = celdas[2] || "";
@@ -332,8 +330,8 @@
                 }
             }
 
-            logSystem(`Estructura renderizada con éxito. Actividades cargadas: ${filasProcesadas}`);
-            tablaBody.innerHTML = htmlFilas || `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 40px;">No se encontraron filas con el formato de cronograma esperado.</td></tr>`;
+            logSystem(`Renderizado finalizado. Renglones de pauta activos cargados: ${filasProcesadas}`);
+            tablaBody.innerHTML = htmlFilas || `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 40px;">No se encontraron filas estructuradas en esta sección.</td></tr>`;
         }
 
         function obtenerClaseBloque(bloque) {
