@@ -13,7 +13,7 @@
             --accent: #38bdf8;
             --border: #334155;
             
-            /* Bloques de producción basados en tus paletas reales */
+            /* Paleta técnica de bloques multimedia */
             --bg-previo: #471b56;      /* Púrpura */
             --bg-transmision: #651a1a; /* Rojo */
             --bg-alabanza: #1e3a8a;    /* Azul */
@@ -178,7 +178,7 @@
     <header>
         <div>
             <h1>CRONOGRAMA GENERAL DE MEDIA</h1>
-            <p style="margin: 5px 0 0 0; color: var(--text-muted);">Sincronización Web Estable - Pautas de Control Multimedia</p>
+            <p style="margin: 5px 0 0 0; color: var(--text-muted);">Transmisión Autorizada - Actualización Automática</p>
         </div>
         <div class="status-badge">
             <div class="status-dot"></div> MONITOR ACTIVO
@@ -205,7 +205,7 @@
             <tbody id="cronograma-body">
                 <tr>
                     <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 40px;">
-                        Descargando pauta desde Publicación Web...
+                        Sincronizando flujo de datos multimedia...
                     </td>
                 </tr>
             </tbody>
@@ -216,12 +216,13 @@
     <div id="debug-log">Iniciando secuenciador de pautas...</div>
 
     <script>
-        // Enlace base de Publicación en la Web original que no genera bloqueos CORS
-        const DOC_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTHX3umAF4N-HNU7qVBBj7TF6mHZTz9VIzNoAnyd1-kRL6J1Ig1zAdNnmMg9sb9dI7nS9N9XEc82wGb/pub?output=csv";
+        // Tu nuevo enlace de publicación web optimizado para evitar bloqueos
+        const BASE_PUBLISH_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTHX3umAF4N-HNU7qVBBj7TF6mHZTz9VIzNoAnyd1-kRL6J1Ig1zAdNnmMg9sb9dI7nS9N9XEc82wGb/pub?output=csv";
         
+        // Mapeo de GIDs actualizados basado en tu nuevo enlace compartido
         const GIDS = {
-            0: "0",          // Ágape(Primera)
-            1: "1151618335", // Ágape(Segunda)
+            0: "1584889573", // Tu nueva ID de pestaña activa
+            1: "1151618335", // Ágape Segunda
             2: "1931811566"  // Explosión
         };
 
@@ -235,16 +236,16 @@
 
         async function obtenerDatosCSV() {
             try {
-                // Inyectamos el GID directo sobre la URL de publicación autorizada
-                const urlCompleta = `${DOC_URL}&gid=${GIDS[pestañaActivaIndex]}&cachebust=${new Date().getTime()}`;
+                // Inyección del GID dinámico y ruptura de caché del navegador
+                const urlCompleta = `${BASE_PUBLISH_URL}&gid=${GIDS[pestañaActivaIndex]}&cachebust=${new Date().getTime()}`;
                 
-                logSystem(`Solicitando transmisión segura para pestaña index [${pestañaActivaIndex}]...`);
+                logSystem(`Conectando con el servidor de Sheets para pestaña [${pestañaActivaIndex}]...`);
                 const respuesta = await fetch(urlCompleta);
                 const textoCSV = await respuesta.text();
                 procesarPautaProduccion(textoCSV);
             } catch (error) {
                 console.error(error);
-                logSystem(`⚠️ Error crítico en pasarela de datos.`);
+                logSystem(`⚠️ Error crítico: Fallo en la pasarela de sincronización.`);
             }
         }
 
@@ -259,46 +260,43 @@
 
             // Detector automático de codificación regional (comas o puntos y comas)
             let separador = ",";
-            if (lineas.length > 5) {
-                const bloqueMuestra = lineas.slice(0, 10).join("");
+            if (lineas.length > 3) {
+                const bloqueMuestra = lineas.slice(0, 8).join("");
                 const puntosComas = (bloqueMuestra.match(/;/g) || []).length;
                 const comas = (bloqueMuestra.match(/,/g) || []).length;
                 if (puntosComas > comas) separador = ";";
             }
-            logSystem(`Separador de matriz asignado: [ ${separador === "," ? "COMA" : "PUNTO Y COMA"} ]`);
+            logSystem(`Separador de celdas activo: [ ${separador === "," ? "COMA" : "PUNTO Y COMA"} ]`);
 
             for (let i = 0; i < lineas.length; i++) {
                 if (!lineas[i].trim()) continue;
 
-                // Separador con soporte para comas dentro de cadenas entrecomilladas
+                // Separador con protección para textos con comas internas
                 let celdas = lineas[i].split(new RegExp(`${separador}(?=(?:[^"]*"[^"]*")*[^"]*$)`)).map(c => c.replace(/"/g, '').trim());
 
-                // 1. Eliminar la columna A en blanco que usas de margen izquierdo en tu Sheets
+                // Desplazar celdas si la columna A está vacía (margen estético de la hoja)
                 if (celdas[0] === "" && celdas.length > 1) {
                     celdas.shift();
                 }
 
-                // Saltar filas vacías residuales
                 if (celdas.length === 0 || (celdas.length === 1 && celdas[0] === "")) continue;
 
-                // 2. Ignorar el banner superior azul ("CRONOGRAMA GENERAL - ÁGAPE")
+                // Omitir el banner principal superior azul
                 if (celdas[0] && celdas[0].toUpperCase().includes("CRONOGRAMA GENERAL")) continue;
 
-                // 3. Detener la lectura al alcanzar los encargados técnicos e instrumentales del bloque de abajo
+                // Cortar lectura en los bloques finales de operarios e instrumentales de abajo
                 if (celdas[0] === "ÁREA" || celdas[0] === "AREA" || celdas[1] === "ENCARGADOS") break;
                 if (celdas[0] && (celdas[0].includes("ÁREAS") || celdas[0].includes("AREAS"))) break;
-                
-                // Saltar la fila repetitiva de etiquetas de cabeceras internas
                 if (celdas[0] === "HORA INICIO") continue;
 
-                // 4. Identificar barras de categorías de bloque intermedio (ej: "ALABANZA Y ADORACIÓN")
+                // Detectar barras de categorías (ej: "TRANSMISIÓN E INICIO", "ALABANZA")
                 const restoVacio = celdas.slice(1).every(c => c === "" || c === undefined);
                 if (celdas[0] && restoVacio) {
                     bloqueActual = celdas[0];
                     continue;
                 }
 
-                // 5. Mapear celdas a la estructura visual limpia
+                // Extracción estructurada de las variables técnicas
                 const horaInicio = celdas[0] || "";
                 const duracion = celdas[1] || "";
                 const horaFinal = celdas[2] || "";
@@ -319,8 +317,8 @@
                 }
             }
 
-            logSystem(`Renderizado finalizado. Actividades inyectadas: ${filasProcesadas}`);
-            tablaBody.innerHTML = htmlFilas || `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 40px;">No hay eventos estructurados en esta hoja.</td></tr>`;
+            logSystem(`Renderizado finalizado con éxito. Filas activas cargadas: ${filasProcesadas}`);
+            tablaBody.innerHTML = htmlFilas || `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 40px;">No se encontraron actividades estructuradas en esta hoja.</td></tr>`;
         }
 
         function obtenerClaseBloque(bloque) {
@@ -344,7 +342,7 @@
 
         window.onload = () => {
             obtenerDatosCSV();
-            setInterval(obtenerDatosCSV, 15000); // Polling automático cada 15 segundos
+            setInterval(obtenerDatosCSV, 15000); // Polling constante cada 15 segundos
         };
     </script>
 </body>
