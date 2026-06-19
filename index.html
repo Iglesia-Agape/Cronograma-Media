@@ -20,6 +20,7 @@
             --bg-mensaje: #7c2d12;     /* Naranja/Café */
             --bg-ministracion: #064e3b;/* Verde */
             --bg-cierre: #334155;      /* Gris */
+            --bg-staff: #0f172a;       /* Fondo oscuro para encargados */
         }
 
         body {
@@ -73,7 +74,7 @@
 
         .table-container {
             background-color: var(--bg-card); border: 1px solid var(--border);
-            border-radius: 12px; overflow: hidden; margin-bottom: 20px;
+            border-radius: 12px; overflow: hidden; margin-bottom: 25px;
         }
 
         table { width: 100%; border-collapse: collapse; text-align: left; }
@@ -85,6 +86,7 @@
 
         td { padding: 16px; border-bottom: 1px solid var(--border); font-size: 15px; vertical-align: top; }
         tr:last-child td { border-bottom: none; }
+        
         .time-cell { font-weight: 700; color: var(--accent); white-space: nowrap; }
         .duration-badge { background-color: rgba(248, 250, 252, 0.1); padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
         
@@ -99,6 +101,18 @@
         .bg-mensaje { background-color: var(--bg-mensaje); }
         .bg-ministracion { background-color: var(--bg-ministracion); }
         .bg-cierre { background-color: var(--bg-cierre); }
+        
+        /* Estilos para la subtabla de Staff / Encargados */
+        .staff-header {
+            background-color: #1e293b;
+            color: var(--accent);
+            font-weight: 700;
+            text-transform: uppercase;
+            font-size: 14px;
+            letter-spacing: 0.5px;
+        }
+        .staff-row { background-color: rgba(15, 23, 42, 0.4); }
+        .staff-area { font-weight: 700; color: #e2e8f0; }
 
         #debug-log {
             background: #000; color: #10b981; font-family: monospace;
@@ -114,7 +128,7 @@
     <header>
         <div>
             <h1>CRONOGRAMA GENERAL DE MEDIA</h1>
-            <p style="margin: 5px 0 0 0; color: var(--text-muted);">Sincronización Avanzada Multi-Pestaña</p>
+            <p style="margin: 5px 0 0 0; color: var(--text-muted);">Sincronización Total (Pauta + Encargados Técnicos)</p>
         </div>
         <div class="status-badge">
             <div class="status-dot"></div> MONITOR ACTIVO
@@ -131,10 +145,10 @@
         <table>
             <thead>
                 <tr>
-                    <th style="width: 15%">Horario</th>
+                    <th style="width: 15%">Horario / Info</th>
                     <th style="width: 10%">Duración</th>
-                    <th style="width: 20%">Bloque</th>
-                    <th style="width: 25%">Actividad</th>
+                    <th style="width: 20%">Bloque / Área</th>
+                    <th style="width: 25%">Actividad / Encargado</th>
                     <th style="width: 30%">Descripción / Notas de Control</th>
                 </tr>
             </thead>
@@ -152,10 +166,8 @@
     <div id="debug-log">Iniciando secuenciador de pautas...</div>
 
     <script>
-        // Enlace base compartido
         const BASE_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTHX3umAF4N-HNU7qVBBj7TF6mHZTz9VIzNoAnyd1-kRL6J1Ig1zAdNnmMg9sb9dI7nS9N9XEc82wGb/pub?output=csv";
         
-        // Mapeo exacto de los IDs de cada una de tus pestañas
         const GIDS = {
             0: "1584889573", // Ágape(Primera)
             1: "1151618335", // Ágape(Segunda)
@@ -173,7 +185,6 @@
 
         async function obtenerDatosCSV() {
             try {
-                // Forzamos la descarga del CSV limpio por pestaña rompiendo la caché
                 const urlCompleta = `${BASE_URL}&gid=${GIDS[pestañaActivaIndex]}&single=true&cachebust=${new Date().getTime()}`;
                 
                 logSystem(`Solicitando pauta para pestaña index [${pestañaActivaIndex}]...`);
@@ -192,8 +203,7 @@
             let htmlFilas = "";
             let bloqueActual = "PRODUCCIÓN";
             let filasProcesadas = 0;
-
-            logSystem(`Líneas recibidas del stream: ${lineas.length}. Compilando matriz...`);
+            let esSeccionEncargados = false;
 
             // Detector automático de separador regional
             let separador = ",";
@@ -209,24 +219,50 @@
 
                 let celdas = lineas[i].split(new RegExp(`${separador}(?=(?:[^"]*"[^"]*")*[^"]*$)`)).map(c => c.replace(/"/g, '').trim());
 
-                // Alineación por margen izquierdo vacío
                 if (celdas[0] === "" && celdas.length > 1) {
                     celdas.shift();
                 }
 
                 if (celdas.length === 0 || (celdas.length === 1 && celdas[0] === "")) continue;
 
-                // Omitir banners decorativos de títulos
                 if (celdas[0] && celdas[0].toUpperCase().includes("CRONOGRAMA GENERAL")) continue;
                 if (celdas[0] === "HORA INICIO") continue;
 
-                // CORRECCIÓN CRÍTICA: Ya NO usamos "break" al encontrar áreas de encargados técnicos abajo.
-                // Usamos "continue" para saltar la fila sin romper la lectura. Así NO se pierden los datos del final.
+                // DETECTOR DE CONTROL: Si encontramos la cabecera de encargados, activamos el modo Staff
                 if (celdas[0] === "ÁREA" || celdas[0] === "AREA" || celdas[1] === "ENCARGADOS" || celdas[0].includes("ÁREAS")) {
+                    esSeccionEncargados = true;
+                    htmlFilas += `
+                        <tr class="staff-header">
+                            <td colspan="2">Estructura Operativa</td>
+                            <td>Área Técnica</td>
+                            <td>Encargado Asignado</td>
+                            <td>Notas de Entrega / Equipos</td>
+                        </tr>
+                    `;
                     continue; 
                 }
 
-                // Detectar barras separadoras de categorías
+                // --- MODO 1: PROCESAR ENCARGADOS ---
+                if (esSeccionEncargados) {
+                    const area = celdas[0] || "";
+                    const encargado = celdas[1] || "";
+                    const notasStaff = celdas[2] || celdas[3] || celdas[4] || "";
+
+                    if (area || encargado) {
+                        filasProcesadas++;
+                        htmlFilas += `
+                            <tr class="staff-row">
+                                <td colspan="2" style="color: var(--text-muted); font-size: 13px; font-weight: bold;">[ STAFF MEDIA ]</td>
+                                <td class="staff-area">${area}</td>
+                                <td style="font-weight: 600; color: var(--accent);">${encargado}</td>
+                                <td style="color: var(--text-muted); font-size: 14px;">${notasStaff}</td>
+                            </tr>
+                        `;
+                    }
+                    continue;
+                }
+
+                // --- MODO 2: PROCESAR ACTIVIDADES NORMALES ---
                 const restoVacio = celdas.slice(1).every(c => c === "" || c === undefined);
                 if (celdas[0] && restoVacio) {
                     bloqueActual = celdas[0];
@@ -239,7 +275,6 @@
                 const actividad = celdas[3] || "";
                 const descripcion = celdas[4] || "";
 
-                // Solo renderizamos si hay una actividad real mapeada en la fila
                 if (actividad && actividad !== bloqueActual) {
                     filasProcesadas++;
                     htmlFilas += `
@@ -254,12 +289,12 @@
                 }
             }
 
-            logSystem(`Renderizado finalizado. Actividades inyectadas: ${filasProcesadas}`);
-            tablaBody.innerHTML = htmlFilas || `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 40px;">No se encontraron actividades estructuradas en esta hoja.</td></tr>`;
+            logSystem(`Renderizado completo con éxito. Filas cargadas (Pauta + Staff): ${filasProcesadas}`);
+            tablaBody.innerHTML = htmlFilas || `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 40px;">No se encontraron datos estructurados.</td></tr>`;
         }
 
         function obtenerClaseBloque(bloque) {
-            const b = bloque.toUpperCase();
+            const b = block = bloque.toUpperCase();
             if (b.includes("PREVIO")) return "bg-previo";
             if (b.includes("TRANSMISIÓN") || b.includes("INICIO") || b.includes("TIMER")) return "bg-transmision";
             if (b.includes("ALABANZA") || b.includes("ADORACIÓN")) return "bg-alabanza";
@@ -279,7 +314,7 @@
 
         window.onload = () => {
             obtenerDatosCSV();
-            setInterval(obtenerDatosCSV, 15000); // Sincroniza en vivo cada 15 segundos
+            setInterval(obtenerDatosCSV, 15000); // Polling automático cada 15 segundos
         };
     </script>
 </body>
