@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cronograma Media</title>
+    <title>Cronograma de Producción - Ágape Media</title>
     <style>
         :root {
             --bg-main: #0f172a;
@@ -13,13 +13,13 @@
             --accent: #38bdf8;
             --border: #334155;
             
-            /* Colores de bloques ajustados a tu producción en vivo */
+            /* Colores de bloques ajustados a tu producción real */
             --bg-previo: #471b56;      /* Púrpura oscuro */
             --bg-transmision: #651a1a; /* Rojo transmisión */
             --bg-alabanza: #1e3a8a;    /* Azul Alabanza */
             --bg-mensaje: #7c2d12;     /* Naranja/Café Mensaje */
             --bg-ministracion: #064e3b;/* Verde Ministración */
-            --bg-cierre: #334155;      /* Gris control */
+            --bg-cierre: #1e293b;      /* Fondo básico */
         }
 
         body {
@@ -165,10 +165,10 @@
     <header>
         <div>
             <h1>CRONOGRAMA GENERAL DE MEDIA</h1>
-            <p style="margin: 5px 0 0 0; color: var(--text-muted);">Visualización permanente y sincronizada con Google Sheets</p>
+            <p style="margin: 5px 0 0 0; color: var(--text-muted);">Estructura original mapeada las 24 horas del día</p>
         </div>
         <div class="status-badge">
-            <div class="status-dot"></div> MONITOR activo
+            <div class="status-dot"></div> MONITOR ACTIVO
         </div>
     </header>
 
@@ -192,7 +192,7 @@
             <tbody id="cronograma-body">
                 <tr>
                     <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 40px;">
-                        Conectando con el servidor de Sheets...
+                        Sincronizando celdas desde Google Sheets...
                     </td>
                 </tr>
             </tbody>
@@ -200,13 +200,11 @@
     </div>
 
     <script>
-        // Tu enlace de publicación CSV oficial
         const BASE_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTHX3umAF4N-HNU7qVBBj7TF6mHZTz9VIzNoAnyd1-kRL6J1Ig1zAdNnmMg9sb9dI7nS9N9XEc82wGb/pub?output=csv";
         
-        // Mapeo de GIDs de tus tres pestañas
         const GIDS = {
-            0: "0",          // Ágape (Primera)
-            1: "1151618335", // Ágape (Segunda)
+            0: "0",          // Ágape(Primera)
+            1: "1151618335", // Ágape(Segunda)
             2: "1931811566"  // Explosión
         };
 
@@ -214,7 +212,6 @@
 
         async function obtenerDatosCSV() {
             try {
-                // cachebust evita que el navegador guarde una copia vieja del documento en caché
                 const urlConGid = `${BASE_CSV_URL}&gid=${GIDS[pestañaActivaIndex]}&cachebust=${new Date().getTime()}`;
                 const respuesta = await fetch(urlConGid);
                 const textoCSV = await respuesta.text();
@@ -236,56 +233,48 @@
             let htmlFilas = "";
             let bloqueActual = "PRODUCCIÓN";
 
-            // Empezamos el recorrido analizando la estructura humana del Sheets
+            // Variables para mapear los índices de columnas dinámicamente
+            let idxInicio = 0, idxDuracion = 1, idxFinal = 2, idxActividad = 3, idxDescripcion = 4;
+
             for (let i = 0; i < lineas.length; i++) {
                 if (!lineas[i].trim()) continue;
 
-                // Separar celdas respetando comas internas (como las notas de OBS)
+                // Separador avanzado por comas para celdas de texto largo
                 const celdas = lineas[i].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(c => c.replace(/"/g, '').trim());
 
-                // Omitir las líneas de encabezados generales del documento
-                if (celdas[0] === "HORA INICIO" || celdas[0] === "CRONOGRAMA" || celdas[0] === "SERVICIO") continue;
+                // 1. Saltarse la cabecera azul de título superior de la hoja
+                if (celdas[0] && celdas[0].toUpperCase().includes("CRONOGRAMA GENERAL")) continue;
 
-                // Detener la lectura por completo si el script detecta las tablas finales de encargados
+                // 2. Detener la lectura si entra al bloque inferior de personal ("ÁREA", "ENCARGADOS")
                 if (celdas[0] === "ÁREA" || celdas[1] === "ENCARGADOS" || celdas[0] === "RESPONSABLE") break;
 
-                // DETECCIÓN INTELIGENTE DE TÍTULOS DE BLOQUE (Barras de colores intermedios)
-                // Si la primera celda tiene el nombre del bloque, pero las de duración y actividad están totalmente vacías
-                if (celdas[0] && !celdas[1] && !celdas[3] && !celdas[4] && !celdas[5]) {
-                    bloqueActual = celdas[0];
+                // 3. MAPEO DINÁMICO: Si es la fila de cabecera interna, guarda la posición real de las columnas
+                if (celdas[0] === "HORA INICIO") {
+                    idxInicio = celdas.indexOf("HORA INICIO");
+                    idxDuracion = celdas.indexOf("DURACIÓN");
+                    idxFinal = celdas.indexOf("HORA FINAL");
+                    idxActividad = celdas.indexOf("ACTIVIDAD");
+                    idxDescripcion = celdas.indexOf("DESCRIPCIÓN");
                     continue; 
                 }
 
-                // BUSCADOR FLEXIBLE DE ACTIVIDADES (Solución al desplazamiento de celdas vacías)
-                // Buscamos dinámicamente un campo que tenga texto y que no sea una hora ni una duración
-                let horaInicio = celdas[0] || "";
-                let duracion = celdas[1] || "";
-                let horaFinal = celdas[2] || "";
-                
-                let actividad = "";
-                let descripcion = "";
-
-                // Si hay datos desplazados más a la derecha debido a la estructura visual de las celdas de Excel
-                if (celdas[3] && celdas[3].length > 0) {
-                    actividad = celdas[3];
-                    descripcion = celdas[4] || "";
-                } else if (celdas[5] && celdas[5].length > 0) {
-                    // Si el CSV empujó la actividad por celdas combinadas ocultas
-                    actividad = celdas[5];
-                    descripcion = celdas[6] || "";
-                } else {
-                    // Buscar el primer bloque de texto disponible en la fila
-                    for(let j = 3; j < celdas.length; j++) {
-                        if(celdas[j]) {
-                            actividad = celdas[j];
-                            descripcion = celdas[j+1] || "";
-                            break;
-                        }
-                    }
+                // 4. DETECCIÓN DE BARRAS DE BLOQUE (Ej: "PREVIO A LA REUNIÓN", "ALABANZA Y ADORACIÓN")
+                // Si la primera celda tiene el título y el resto está vacío, actualizamos el bloque
+                const tieneContenidoExtra = celdas.slice(1).some(c => c.length > 0);
+                if (celdas[0] && !tieneContenidoExtra) {
+                    bloqueActual = celdas[0];
+                    continue;
                 }
 
-                // Si encontramos una actividad válida, la pintamos de inmediato
-                if (actividad && actividad !== bloqueActual) {
+                // 5. EXTRACCIÓN DE FILAS DE ACTIVIDAD
+                const horaInicio = celdas[idxInicio] || "";
+                const duracion = celdas[idxDuracion] || "";
+                const horaFinal = celdas[idxFinal] || "";
+                const actividad = celdas[idxActividad] || "";
+                const descripcion = celdas[idxDescripcion] || "";
+
+                // Si encontramos una actividad válida que no sea igual al bloque, la agregamos
+                if (actividad && actividad !== bloqueActual && actividad !== "ACTIVIDAD") {
                     htmlFilas += `
                         <tr>
                             <td class="time-cell">${horaInicio} ${horaFinal ? '- ' + horaFinal : ''}</td>
@@ -298,7 +287,7 @@
                 }
             }
 
-            tablaBody.innerHTML = htmlFilas || `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 40px;">No hay eventos en este bloque en este momento.</td></tr>`;
+            tablaBody.innerHTML = htmlFilas || `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 40px;">No hay eventos en esta sección en este momento.</td></tr>`;
         }
 
         function obtenerClaseBloque(bloque) {
@@ -322,7 +311,6 @@
 
         window.onload = () => {
             obtenerDatosCSV();
-            // Verifica actualizaciones en el Sheets cada 15 segundos sin importar el día de la semana
             setInterval(obtenerDatosCSV, 15000);
         };
     </script>
