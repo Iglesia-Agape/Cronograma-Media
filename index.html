@@ -14,12 +14,12 @@
             --border: #334155;
             
             /* Colores de bloques ajustados a tu producción real */
-            --bg-previo: #471b56;      /* Púrpura oscuro */
-            --bg-transmision: #651a1a; /* Rojo transmisión */
-            --bg-alabanza: #1e3a8a;    /* Azul Alabanza */
-            --bg-mensaje: #7c2d12;     /* Naranja/Café Mensaje */
-            --bg-ministracion: #064e3b;/* Verde Ministración */
-            --bg-cierre: #1e293b;      /* Fondo básico */
+            --bg-previo: #471b56;      /* Púrpura */
+            --bg-transmision: #651a1a; /* Rojo */
+            --bg-alabanza: #1e3a8a;    /* Azul */
+            --bg-mensaje: #7c2d12;     /* Naranja/Café */
+            --bg-ministracion: #064e3b;/* Verde */
+            --bg-cierre: #334155;      /* Gris */
         }
 
         body {
@@ -165,7 +165,7 @@
     <header>
         <div>
             <h1>CRONOGRAMA GENERAL DE MEDIA</h1>
-            <p style="margin: 5px 0 0 0; color: var(--text-muted);">Estructura original mapeada las 24 horas del día</p>
+            <p style="margin: 5px 0 0 0; color: var(--text-muted);">Sincronizado en tiempo real desde Google Sheets</p>
         </div>
         <div class="status-badge">
             <div class="status-dot"></div> MONITOR ACTIVO
@@ -192,7 +192,7 @@
             <tbody id="cronograma-body">
                 <tr>
                     <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 40px;">
-                        Sincronizando celdas desde Google Sheets...
+                        Cargando matriz de control...
                     </td>
                 </tr>
             </tbody>
@@ -217,11 +217,11 @@
                 const textoCSV = await respuesta.text();
                 procesarEstructuraOriginal(textoCSV);
             } catch (error) {
-                console.error("Error cargando la secuencia:", error);
+                console.error("Error en sincronización:", error);
                 document.getElementById("cronograma-body").innerHTML = `
                     <tr>
                         <td colspan="5" style="text-align: center; color: #ef4444; padding: 20px;">
-                            ⚠️ Error al conectar con las hojas de producción. Reintentando...
+                            ⚠️ Error de enlace. Intentando reconexión automática...
                         </td>
                     </tr>`;
             }
@@ -233,48 +233,45 @@
             let htmlFilas = "";
             let bloqueActual = "PRODUCCIÓN";
 
-            // Variables para mapear los índices de columnas dinámicamente
-            let idxInicio = 0, idxDuracion = 1, idxFinal = 2, idxActividad = 3, idxDescripcion = 4;
-
             for (let i = 0; i < lineas.length; i++) {
                 if (!lineas[i].trim()) continue;
 
-                // Separador avanzado por comas para celdas de texto largo
-                const celdas = lineas[i].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(c => c.replace(/"/g, '').trim());
+                // Separar celdas respetando textos con comillas o comas internas
+                let celdas = lineas[i].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(c => c.replace(/"/g, '').trim());
 
-                // 1. Saltarse la cabecera azul de título superior de la hoja
-                if (celdas[0] && celdas[0].toUpperCase().includes("CRONOGRAMA GENERAL")) continue;
-
-                // 2. Detener la lectura si entra al bloque inferior de personal ("ÁREA", "ENCARGADOS")
-                if (celdas[0] === "ÁREA" || celdas[1] === "ENCARGADOS" || celdas[0] === "RESPONSABLE") break;
-
-                // 3. MAPEO DINÁMICO: Si es la fila de cabecera interna, guarda la posición real de las columnas
-                if (celdas[0] === "HORA INICIO") {
-                    idxInicio = celdas.indexOf("HORA INICIO");
-                    idxDuracion = celdas.indexOf("DURACIÓN");
-                    idxFinal = celdas.indexOf("HORA FINAL");
-                    idxActividad = celdas.indexOf("ACTIVIDAD");
-                    idxDescripcion = celdas.indexOf("DESCRIPCIÓN");
-                    continue; 
+                // Corrección clave: Si la columna A está vacía debido al margen estético, desplazamos el array
+                if (celdas[0] === "" && celdas.length > 1) {
+                    celdas.shift(); // Removemos el espacio vacío inicial para alinear los índices
                 }
 
-                // 4. DETECCIÓN DE BARRAS DE BLOQUE (Ej: "PREVIO A LA REUNIÓN", "ALABANZA Y ADORACIÓN")
-                // Si la primera celda tiene el título y el resto está vacío, actualizamos el bloque
-                const tieneContenidoExtra = celdas.slice(1).some(c => c.length > 0);
-                if (celdas[0] && !tieneContenidoExtra) {
+                // Omitir títulos decorativos de la parte superior
+                if (celdas[0] && celdas[0].toUpperCase().includes("CRONOGRAMA GENERAL")) continue;
+
+                // Detener la lectura por completo al llegar a la tabla azul inferior de personal técnico
+                if (celdas[0] === "ÁREA" || celdas[0] === "AREA" || celdas[1] === "ENCARGADOS") break;
+                if (celdas[0] === "ÁREAS ENCARGADOS" || celdas[0] === "AREAS ENCARGADOS") break;
+
+                // Saltar fila de cabeceras guía internas
+                if (celdas[0] === "HORA INICIO") continue;
+
+                // DETECCIÓN DE TITULOS DE BLOQUES INTERMEDIOS (Ej: "PREVIO A LA REUNIÓN")
+                // Si la primera celda tiene texto y las demás están completamente vacías
+                const restoVacio = celdas.slice(1).every(c => c === "");
+                if (celdas[0] && restoVacio) {
                     bloqueActual = celdas[0];
                     continue;
                 }
 
-                // 5. EXTRACCIÓN DE FILAS DE ACTIVIDAD
-                const horaInicio = celdas[idxInicio] || "";
-                const duracion = celdas[idxDuracion] || "";
-                const horaFinal = celdas[idxFinal] || "";
-                const actividad = celdas[idxActividad] || "";
-                const descripcion = celdas[idxDescripcion] || "";
+                // EXTRACCIÓN DE FILAS TÉCNICAS
+                // Mapeo directo según la estructura de tus imágenes: Col B (0)=Inicio, Col C (1)=Duración, Col D (2)=Final, Col E (3)=Actividad, Col F (4)=Descripción
+                const horaInicio = celdas[0] || "";
+                const duracion = celdas[1] || "";
+                const horaFinal = celdas[2] || "";
+                const actividad = celdas[3] || "";
+                const descripcion = celdas[4] || "";
 
-                // Si encontramos una actividad válida que no sea igual al bloque, la agregamos
-                if (actividad && actividad !== bloqueActual && actividad !== "ACTIVIDAD") {
+                // Si hay una actividad válida asignada en la fila
+                if (actividad && actividad !== bloqueActual) {
                     htmlFilas += `
                         <tr>
                             <td class="time-cell">${horaInicio} ${horaFinal ? '- ' + horaFinal : ''}</td>
@@ -287,7 +284,7 @@
                 }
             }
 
-            tablaBody.innerHTML = htmlFilas || `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 40px;">No hay eventos en esta sección en este momento.</td></tr>`;
+            tablaBody.innerHTML = htmlFilas || `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 40px;">No se encontraron eventos activos en este bloque.</td></tr>`;
         }
 
         function obtenerClaseBloque(bloque) {
@@ -305,7 +302,7 @@
             document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
             boton.classList.add('active');
             
-            document.getElementById("cronograma-body").innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 40px;">Cargando bloque de producción...</td></tr>`;
+            document.getElementById("cronograma-body").innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 40px;">Sincronizando bloque técnico...</td></tr>`;
             obtenerDatosCSV();
         }
 
