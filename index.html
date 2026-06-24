@@ -342,7 +342,7 @@
             /* Formato 1: pub (la que ya tenías) */
             `https://docs.google.com/spreadsheets/d/e/${SHEET_ID_PUBLICADO}/pub?output=csv&gid=${gid}&single=true&cachebust=${cb}`,
             /* Formato 2: export directo por ID */
-            `https://docs.google.com/spreadsheets/${SHEET_ID_DIRECTO}/export?format=csv&gid=${gid}&cachebust=${cb}`,
+            `https://docs.google.com/spreadsheets/d/${SHEET_ID_DIRECTO}/export?format=csv&gid=${gid}&cachebust=${cb}`,
             /* Formato 3: gviz query */
             `https://docs.google.com/spreadsheets/d/${SHEET_ID_DIRECTO}/gviz/tq?tqx=out:csv&gid=${gid}&cachebust=${cb}`,
         ];
@@ -439,6 +439,7 @@
         for (let i = 0; i < lineas.length; i++) {
             if (!lineas[i].trim()) continue;
             let c = splitLine(lineas[i]);
+            const cRaw = [...c]; /* copia original antes de shift, para modo staff */
 
             /* Descartar prefijos vacíos (col A decorativa) */
             while (c.length > 1 && limpiarCelda(c[0]) === "") c.shift();
@@ -452,7 +453,9 @@
 
             /* ── SECCIÓN ENCARGADOS ── */
             if (c0U === "ÁREA" || c0U === "AREA" || c0U === "ÁREAS" ||
-                (limpiarCelda(c[1])).toUpperCase() === "ENCARGADOS") {
+                (limpiarCelda(c[1])).toUpperCase() === "ENCARGADOS" ||
+                cRaw.some(x => x.toUpperCase() === "ÁREA" || x.toUpperCase() === "AREA") &&
+                cRaw.some(x => x.toUpperCase() === "ENCARGADOS" || x.toUpperCase() === "ENCARGADO")) {
                 modoStaff = true;
                 log(`Sección STAFF en línea ${i+1}`, "info");
                 continue;
@@ -460,9 +463,26 @@
 
             /* ── MODO STAFF ── */
             if (modoStaff) {
-                const area      = limpiarCelda(c[0]);
-                const encargado = limpiarCelda(c[1]);
-                const notas     = c.slice(2).map(limpiarCelda).filter(Boolean).join(" · ");
+                /* Usamos cRaw (sin shift) para respetar la estructura real de la hoja.
+                   La hoja tiene: col0=vacía/decorativa, col1=ÁREA, col2=ENCARGADO, col3+=NOTAS
+                   Pero si no hay col decorativa, puede ser col0=ÁREA, col1=ENCARGADO.
+                   Estrategia: buscar la primera columna no vacía como área y la siguiente como encargado. */
+                let staffCols = cRaw.map(limpiarCelda);
+                /* Detectar si primera columna es decorativa (vacía o igual a bloque/hora) */
+                let area = "", encargado = "", notasArr = [];
+                /* Buscar índice de la primera col con texto */
+                const firstNonEmpty = staffCols.findIndex(x => x !== "");
+                if (firstNonEmpty === -1) continue;
+                area      = staffCols[firstNonEmpty];
+                encargado = staffCols[firstNonEmpty + 1] || "";
+                notasArr  = staffCols.slice(firstNonEmpty + 2).filter(Boolean);
+
+                /* Si solo hay un campo no vacío, es el encargado y el área se hereda */
+                if (!encargado) {
+                    encargado = area;
+                    area = "";
+                }
+                const notas = notasArr.join(" · ");
                 if (encargado) {
                     /* Si área vacía: celda fusionada en Sheets → heredar última área */
                     const areaFinal = area || (staff.length > 0 ? staff[staff.length-1].area : "");
