@@ -327,25 +327,57 @@
         box.scrollTop = box.scrollHeight;
     }
 
-    /* ── FETCH ── */
+    /* ── FETCH con cadena de proxies CORS ──
+       GitHub Pages (y cualquier dominio externo) no puede hacer fetch()
+       directo a Google Sheets por bloqueo CORS del navegador.
+       Intentamos proxies en orden hasta que uno funcione. */
+    const PROXIES = [
+        (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+        (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+        (url) => `https://thingproxy.freeboard.io/fetch/${url}`,
+        (url) => url,   /* intento directo como último recurso */
+    ];
+
+    async function fetchConProxy(urlOriginal) {
+        for (let i = 0; i < PROXIES.length; i++) {
+            const urlProxy = PROXIES[i](urlOriginal);
+            try {
+                log(`Proxy [${i}]: ${urlProxy.slice(0, 60)}…`, "info");
+                const res = await fetch(urlProxy, { signal: AbortSignal.timeout(8000) });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const texto = await res.text();
+                /* Validar que parece CSV real (tiene comas/puntos y comas) */
+                if (texto.length < 10 || texto.includes("<html")) throw new Error("Respuesta no es CSV");
+                log(`Proxy [${i}] OK — ${texto.length} bytes`, "ok");
+                return texto;
+            } catch(e) {
+                log(`Proxy [${i}] falló: ${e.message}`, "warn");
+            }
+        }
+        throw new Error("Todos los proxies fallaron. Verifica que la hoja sea pública (Archivo → Compartir → Publicar en la web).");
+    }
+
     async function obtenerDatos() {
         const icon = document.getElementById("sync-icon");
         const label = document.getElementById("sync-label");
         icon.classList.add("spinning"); label.textContent = "Actualizando…";
         try {
-            const url = `${BASE_URL}&gid=${GIDS[pestañaActiva]}&single=true&cachebust=${Date.now()}`;
+            const urlOriginal = `${BASE_URL}&gid=${GIDS[pestañaActiva]}&single=true&cachebust=${Date.now()}`;
             log(`Solicitando GID ${GIDS[pestañaActiva]}…`, "info");
-            const res = await fetch(url);
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const csv = await res.text();
-            log(`CSV recibido: ${csv.length} bytes, ${csv.split(/\r?\n/).length} líneas`, "info");
+            const csv = await fetchConProxy(urlOriginal);
+            log(`CSV recibido: ${csv.split(/\r?\n/).length} líneas`, "info");
             datos = parsearCSV(csv);
             renderizar();
             log(`OK — ${datos.actividades.length} actividades · ${datos.staff.length} encargados`, "ok");
             label.textContent = "Sincronizado ✓";
         } catch(e) {
-            log(`Error: ${e.message}`, "error");
+            log(`Error final: ${e.message}`, "error");
             label.textContent = "Error de sync";
+            document.getElementById("cronograma-body").innerHTML =
+                `<tr><td colspan="7" class="state-cell">
+                    <div class="state-icon">⚠️</div>
+                    <div class="state-msg" style="color:#f87171">${e.message}</div>
+                 </td></tr>`;
         } finally {
             icon.classList.remove("spinning");
         }
@@ -360,92 +392,89 @@
        La hoja también tiene filas de CABECERA de sección (solo col A o col B con el nombre
        del bloque, el resto vacías) y luego una sección de ENCARGADOS al final.
     ── */
+    /* limpiar celda CSV */
+    function limpiarCelda(s) { return (s || "").replace(/^[,;"\s]+|[,;"\s]+$/g, "").trim(); }
+
     function parsearCSV(texto) {
         const lineas = texto.split(/\r?\n/);
         const actividades = [];
         const staff = [];
         let bloqueActual = "PRODUCCIÓN";
         let modoStaff = false;
+        let avisosPendientes = [];   /* avisos de col G que esperan una actividad */
 
         /* Detectar separador */
         const muestra = lineas.slice(0, 12).join("");
         const nSemi  = (muestra.match(/;/g)  || []).length;
         const nComa  = (muestra.match(/,/g)  || []).length;
         const sep = nSemi > nComa ? ";" : ",";
-        log(`Separador detectado: "${sep}" (;=${nSemi} ,=${nComa})`, "info");
+        log(`Separador: "${sep}"`, "info");
 
         const splitLine = (l) =>
-            l.split(new RegExp(`${sep}(?=(?:[^"]*"[^"]*")*[^"]*$)`))
+            l.split(new RegExp(`${sep.replace(";","\\;")}(?=(?:[^"]*"[^"]*")*[^"]*$)`))
              .map(c => c.replace(/^"|"$/g, '').trim());
 
         for (let i = 0; i < lineas.length; i++) {
             if (!lineas[i].trim()) continue;
             let c = splitLine(lineas[i]);
 
-            /* Si la primera celda está vacía y hay más columnas,
-               puede ser que la hoja tenga una col extra al inicio (col A vacía = índice decorativo).
-               Normalizamos descartando prefijos vacíos. */
-            while (c.length > 1 && c[0] === "") c.shift();
-            if (!c.length || (c.length === 1 && c[0] === "")) continue;
+            /* Descartar prefijos vacíos (col A decorativa) */
+            while (c.length > 1 && limpiarCelda(c[0]) === "") c.shift();
+            if (!c.length || (c.length === 1 && !limpiarCelda(c[0]))) continue;
 
-            const c0 = c[0].trim();
+            const c0  = limpiarCelda(c[0]);
             const c0U = c0.toUpperCase();
 
-            /* Saltar títulos decorativos */
             if (c0U.includes("CRONOGRAMA GENERAL")) continue;
-
-            /* Cabecera de pauta — la fila con "HORA INICIO" etc */
             if (c0U === "HORA INICIO" || c0U === "HORA") continue;
 
-            /* ── DETECCIÓN DE SECCIÓN ENCARGADOS ──
-               La cabecera puede ser "ÁREA" / "ENCARGADOS" en col B, etc. */
+            /* ── SECCIÓN ENCARGADOS ── */
             if (c0U === "ÁREA" || c0U === "AREA" || c0U === "ÁREAS" ||
-                (c[1] || "").toUpperCase() === "ENCARGADOS") {
+                (limpiarCelda(c[1])).toUpperCase() === "ENCARGADOS") {
                 modoStaff = true;
-                log(`Sección STAFF detectada en línea ${i+1}`, "info");
+                log(`Sección STAFF en línea ${i+1}`, "info");
                 continue;
             }
 
             /* ── MODO STAFF ── */
             if (modoStaff) {
-                /* col 0 = ÁREA, col 1 = ENCARGADO, col 2+ = notas */
-                const area      = c[0] || "";
-                const encargado = c[1] || "";
-                const notas     = c.slice(2).filter(Boolean).join(" · ");
+                const area      = limpiarCelda(c[0]);
+                const encargado = limpiarCelda(c[1]);
+                const notas     = c.slice(2).map(limpiarCelda).filter(Boolean).join(" · ");
                 if (area || encargado) staff.push({ area, encargado, notas });
                 continue;
             }
 
-            /* ── FILA DE SECCIÓN / BLOQUE ──
-               Identifica filas donde solo col 0 (o col B en la hoja) tiene texto
-               y las demás están vacías → es el nombre de un bloque. */
-            const resto = c.slice(1);
-            const restoVacio = resto.every(x => !x);
+            /* Aviso de col G o col F en CUALQUIER fila */
+            const avisoRaw = limpiarCelda(c[6]) || limpiarCelda(c[5]) || "";
+
+            /* ── FILA DE BLOQUE (solo col 0 tiene texto) ── */
+            const restoVacio = c.slice(1).every(x => !limpiarCelda(x));
             if (c0 && restoVacio) {
+                if (avisoRaw) avisosPendientes.push(avisoRaw);
                 bloqueActual = c0;
                 log(`Bloque: "${bloqueActual}"`, "info");
                 continue;
             }
 
-            /* ── FILA DE ACTIVIDAD ──
-               Intentamos leer las columnas en el orden detectado.
-               La hoja puede tener la col A como decorativa (vacía) o no.
-               Después del shift() arriba, el índice 0 ya es HORA INICIO. */
-            const horaInicio  = c[0] || "";
-            const duracion    = c[1] || "";
-            const horaFinal   = c[2] || "";
-            const actividad   = c[3] || "";
-            const descripcion = c[4] || "";
-            /* Col F(5) puede estar vacía; Col G(6) es el aviso */
-            const aviso       = c[6] || c[5] || "";   /* intentamos 6, fallback a 5 */
+            const horaInicio  = limpiarCelda(c[0]);
+            const duracion    = limpiarCelda(c[1]);
+            const horaFinal   = limpiarCelda(c[2]);
+            const actividad   = limpiarCelda(c[3]);
+            const descripcion = limpiarCelda(c[4]);
 
-            /* Si no hay actividad, o es solo el nombre del bloque, saltamos */
-            if (!actividad || actividad === bloqueActual) continue;
+            /* Fila sin actividad → guardar aviso si lo hay */
+            if (!actividad || actividad === bloqueActual) {
+                if (avisoRaw) avisosPendientes.push(avisoRaw);
+                continue;
+            }
 
-            /* Filtrar avisos que son solo ruido de formato */
-            const avisoLimpio = aviso.replace(/^[,;"\s]+|[,;"\s]+$/g, "");
+            /* Acumular aviso de esta fila + pendientes, deduplicar */
+            if (avisoRaw) avisosPendientes.push(avisoRaw);
+            const avisoFinal = [...new Set(avisosPendientes)].join(" · ");
+            avisosPendientes = [];
 
-            actividades.push({ horaInicio, duracion, horaFinal, bloque: bloqueActual, actividad, descripcion, aviso: avisoLimpio });
+            actividades.push({ horaInicio, duracion, horaFinal, bloque: bloqueActual, actividad, descripcion, aviso: avisoFinal });
         }
 
         return { actividades, staff };
