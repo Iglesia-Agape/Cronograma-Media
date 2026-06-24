@@ -457,8 +457,9 @@
             let c = splitLine(lineas[i]);
             const cRaw = [...c]; /* copia original antes de shift, para modo staff */
 
-            /* Descartar prefijos vacíos (col A decorativa) */
-            while (c.length > 1 && limpiarCelda(c[0]) === "") c.shift();
+            /* Descartar UN solo prefijo vacío (col A decorativa).
+               No usar while — si hora está fusionada las celdas vacías son datos. */
+            if (c.length > 1 && limpiarCelda(c[0]) === "" && limpiarCelda(c[1]) !== "") c.shift();
             if (!c.length || (c.length === 1 && !limpiarCelda(c[0]))) continue;
 
             const c0  = limpiarCelda(c[0]);
@@ -490,14 +491,18 @@
                 /* Usar posiciones de columna detectadas en el header para extraer área y encargado.
                    cRaw preserva las columnas originales sin eliminar vacías al inicio. */
                 const staffCols = cRaw.map(limpiarCelda);
+                /* Log para depurar estructura de columnas */
+                log(`STAFF fila ${i+1}: cols=[${staffCols.map((x,i)=>x?`${i}:${x}`:"").filter(Boolean).join("|")}] colArea=${staffColArea} colEnc=${staffColEnc}`, "info");
                 const area      = staffColArea >= 0 ? (staffCols[staffColArea] || "") : "";
                 const encargado = staffColEnc  >= 0 ? (staffCols[staffColEnc]  || "") : "";
-                const notaStart = Math.max(staffColArea, staffColEnc) + 1;
+                const notaStart = Math.max(staffColArea >= 0 ? staffColArea : 0, staffColEnc >= 0 ? staffColEnc : 0) + 1;
                 const notas     = staffCols.slice(notaStart).filter(Boolean).join(" · ");
                 if (encargado) {
                     /* Si área vacía: celda fusionada en Sheets → heredar última área */
                     const areaFinal = area || (staff.length > 0 ? staff[staff.length-1].area : "");
                     staff.push({ area: areaFinal, encargado, notas });
+                } else {
+                    log(`STAFF fila ${i+1} IGNORADA — enc vacío. area="${area}" cols=${JSON.stringify(staffCols)}`, "warn");
                 }
                 continue;
             }
