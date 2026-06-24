@@ -304,7 +304,10 @@
 
 <script>
     /* ── CONFIG ── */
-    const BASE_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTHX3umAF4N-HNU7qVBBj7TF6mHZTz9VIzNoAnyd1-kRL6J1Ig1zAdNnmMg9sb9dI7nS9N9XEc82wGb/pub?output=csv";
+    /* Usamos dos formatos de URL: el /pub (para quien la publicó) y /export (más abierto).
+       El fetch intenta ambos formatos a través de proxies CORS. */
+    const SHEET_ID_PUBLICADO = "2PACX-1vTHX3umAF4N-HNU7qVBBj7TF6mHZTz9VIzNoAnyd1-kRL6J1Ig1zAdNnmMg9sb9dI7nS9N9XEc82wGb";
+    const SHEET_ID_DIRECTO   = "13GqRrgWTb4inoj1o_HSwPacbHDBCBtkeJ9f5Zx6bN7U";
     const GIDS = { 0:"1584889573", 1:"1151618335", 2:"1931811566" };
     const POLL_INTERVAL = 15000;
 
@@ -327,34 +330,55 @@
         box.scrollTop = box.scrollHeight;
     }
 
-    /* ── FETCH con cadena de proxies CORS ──
-       GitHub Pages (y cualquier dominio externo) no puede hacer fetch()
-       directo a Google Sheets por bloqueo CORS del navegador.
-       Intentamos proxies en orden hasta que uno funcione. */
-    const PROXIES = [
-        (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
-        (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-        (url) => `https://thingproxy.freeboard.io/fetch/${url}`,
-        (url) => url,   /* intento directo como último recurso */
+    /* ── FETCH con múltiples URLs + proxies CORS ──
+       Estrategia: intentamos 3 formatos de URL × 3 proxies = 9 combinaciones.
+       - URL /pub  → la que usabas (a veces da 401 en proxies)
+       - URL /export → exportación directa, más confiable con proxies
+       - URL /gviz  → endpoint de visualización, no requiere publicación pública
+    ── */
+    function urlsParaGid(gid) {
+        const cb = Date.now();
+        return [
+            /* Formato 1: pub (la que ya tenías) */
+            `https://docs.google.com/spreadsheets/d/e/${SHEET_ID_PUBLICADO}/pub?output=csv&gid=${gid}&single=true&cachebust=${cb}`,
+            /* Formato 2: export directo por ID */
+            `https://docs.google.com/spreadsheets/${SHEET_ID_DIRECTO}/export?format=csv&gid=${gid}&cachebust=${cb}`,
+            /* Formato 3: gviz query */
+            `https://docs.google.com/spreadsheets/d/${SHEET_ID_DIRECTO}/gviz/tq?tqx=out:csv&gid=${gid}&cachebust=${cb}`,
+        ];
+    }
+
+    const WRAPPERS = [
+        (u) => `https://corsproxy.io/?${encodeURIComponent(u)}`,
+        (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+        (u) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
+        (u) => u,  /* directo — funciona en local, falla en GitHub Pages */
     ];
 
-    async function fetchConProxy(urlOriginal) {
-        for (let i = 0; i < PROXIES.length; i++) {
-            const urlProxy = PROXIES[i](urlOriginal);
-            try {
-                log(`Proxy [${i}]: ${urlProxy.slice(0, 60)}…`, "info");
-                const res = await fetch(urlProxy, { signal: AbortSignal.timeout(8000) });
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                const texto = await res.text();
-                /* Validar que parece CSV real (tiene comas/puntos y comas) */
-                if (texto.length < 10 || texto.includes("<html")) throw new Error("Respuesta no es CSV");
-                log(`Proxy [${i}] OK — ${texto.length} bytes`, "ok");
-                return texto;
-            } catch(e) {
-                log(`Proxy [${i}] falló: ${e.message}`, "warn");
+    function esCSVValido(texto) {
+        if (!texto || texto.length < 20) return false;
+        if (texto.trimStart().startsWith("<")) return false;  /* HTML = error */
+        return true;
+    }
+
+    async function fetchConProxy(gid) {
+        const urls = urlsParaGid(gid);
+        for (const url of urls) {
+            for (let wi = 0; wi < WRAPPERS.length; wi++) {
+                const urlFinal = WRAPPERS[wi](url);
+                try {
+                    const res = await fetch(urlFinal, { signal: AbortSignal.timeout(7000) });
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                    const texto = await res.text();
+                    if (!esCSVValido(texto)) throw new Error("No es CSV válido");
+                    log(`OK — proxy[${wi}] + formato[${urls.indexOf(url)}] — ${texto.split(/\r?\n/).length} líneas`, "ok");
+                    return texto;
+                } catch(e) {
+                    log(`proxy[${wi}]+fmt[${urls.indexOf(url)}] falló: ${e.message}`, "warn");
+                }
             }
         }
-        throw new Error("Todos los proxies fallaron. Verifica que la hoja sea pública (Archivo → Compartir → Publicar en la web).");
+        throw new Error("No se pudo conectar con Google Sheets. Asegúrate que la hoja esté publicada: Archivo → Compartir → Publicar en la web → Publicar.");
     }
 
     async function obtenerDatos() {
@@ -362,21 +386,19 @@
         const label = document.getElementById("sync-label");
         icon.classList.add("spinning"); label.textContent = "Actualizando…";
         try {
-            const urlOriginal = `${BASE_URL}&gid=${GIDS[pestañaActiva]}&single=true&cachebust=${Date.now()}`;
             log(`Solicitando GID ${GIDS[pestañaActiva]}…`, "info");
-            const csv = await fetchConProxy(urlOriginal);
-            log(`CSV recibido: ${csv.split(/\r?\n/).length} líneas`, "info");
+            const csv = await fetchConProxy(GIDS[pestañaActiva]);
             datos = parsearCSV(csv);
             renderizar();
-            log(`OK — ${datos.actividades.length} actividades · ${datos.staff.length} encargados`, "ok");
+            log(`Listo — ${datos.actividades.length} actividades · ${datos.staff.length} encargados`, "ok");
             label.textContent = "Sincronizado ✓";
         } catch(e) {
-            log(`Error final: ${e.message}`, "error");
+            log(`Error: ${e.message}`, "error");
             label.textContent = "Error de sync";
             document.getElementById("cronograma-body").innerHTML =
                 `<tr><td colspan="7" class="state-cell">
                     <div class="state-icon">⚠️</div>
-                    <div class="state-msg" style="color:#f87171">${e.message}</div>
+                    <div class="state-msg" style="color:#f87171;max-width:500px;margin:0 auto;">${e.message}</div>
                  </td></tr>`;
         } finally {
             icon.classList.remove("spinning");
@@ -441,7 +463,11 @@
                 const area      = limpiarCelda(c[0]);
                 const encargado = limpiarCelda(c[1]);
                 const notas     = c.slice(2).map(limpiarCelda).filter(Boolean).join(" · ");
-                if (area || encargado) staff.push({ area, encargado, notas });
+                if (encargado) {
+                    /* Si área vacía: celda fusionada en Sheets → heredar última área */
+                    const areaFinal = area || (staff.length > 0 ? staff[staff.length-1].area : "");
+                    staff.push({ area: areaFinal, encargado, notas });
+                }
                 continue;
             }
 
@@ -469,12 +495,20 @@
                 continue;
             }
 
+            /* Herencia de hora para celdas fusionadas verticalmente:
+               si hora vacía, usar la última registrada (bloque cierre tiene múltiples
+               actividades bajo una sola celda de hora en la hoja). */
+            const ultimaAct = actividades.length > 0 ? actividades[actividades.length-1] : null;
+            const horaInicioFinal = horaInicio || (ultimaAct ? ultimaAct.horaInicio : "");
+            const duracionFinal   = duracion   || (ultimaAct ? ultimaAct.duracion   : "");
+            const horaFinalFinal  = horaFinal  || (ultimaAct ? ultimaAct.horaFinal  : "");
+
             /* Acumular aviso de esta fila + pendientes, deduplicar */
             if (avisoRaw) avisosPendientes.push(avisoRaw);
             const avisoFinal = [...new Set(avisosPendientes)].join(" · ");
             avisosPendientes = [];
 
-            actividades.push({ horaInicio, duracion, horaFinal, bloque: bloqueActual, actividad, descripcion, aviso: avisoFinal });
+            actividades.push({ horaInicio: horaInicioFinal, duracion: duracionFinal, horaFinal: horaFinalFinal, bloque: bloqueActual, actividad, descripcion, aviso: avisoFinal });
         }
 
         return { actividades, staff };
