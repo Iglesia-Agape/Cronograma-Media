@@ -505,18 +505,19 @@
                 const encargado = staffColEnc  >= 0 ? (staffCols[staffColEnc]  || "") : "";
                 const notaStart = Math.max(staffColArea >= 0 ? staffColArea : 0, staffColEnc >= 0 ? staffColEnc : 0) + 1;
                 const notas     = staffCols.slice(notaStart).filter(Boolean).join(" · ");
-                if (encargado) {
-                    /* Caso normal: área y encargado en sus columnas correctas */
-                    const areaFinal = area || (staff.length > 0 ? staff[staff.length-1].area : "");
-                    staff.push({ area: areaFinal, encargado, notas });
-                } else if (area) {
-                    /* Celda fusionada invertida: el texto está en col ÁREA pero es el encargado.
-                       Esto pasa cuando Sheets exporta filas con celda de ENCARGADO fusionada vacía
-                       pero la col ÁREA tiene el nombre del rol (ej. SWITCHER, EDICIÓN, AUDIO REMOTO).
-                       → Heredar área anterior, usar este texto como encargado. */
+                if (area && encargado) {
+                    /* Caso normal: área y encargado presentes */
+                    staff.push({ area, encargado, notas });
+                } else if (area && !encargado) {
+                    /* Celda de ENCARGADO fusionada (vacía en CSV) → heredar encargado de la fila anterior.
+                       Ej: OBS+SWITCHER comparten encargado, TV+AUDIO REMOTO comparten encargado. */
+                    const encHeredado = staff.length > 0 ? staff[staff.length-1].encargado : "";
+                    staff.push({ area, encargado: encHeredado, notas });
+                    log(`STAFF fila ${i+1} — enc heredado para área "${area}": ${encHeredado}`, "info");
+                } else if (!area && encargado) {
+                    /* Celda de ÁREA fusionada (vacía en CSV) → heredar área de la fila anterior */
                     const areaHeredada = staff.length > 0 ? staff[staff.length-1].area : "";
-                    staff.push({ area: areaHeredada, encargado: area, notas });
-                    log(`STAFF fila ${i+1} — enc desde col área: ${area} → área heredada: ${areaHeredada}`, "info");
+                    staff.push({ area: areaHeredada, encargado, notas });
                 }
                 continue;
             }
