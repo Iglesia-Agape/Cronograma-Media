@@ -308,7 +308,7 @@
        El fetch intenta ambos formatos a través de proxies CORS. */
     const SHEET_ID_PUBLICADO = "2PACX-1vTHX3umAF4N-HNU7qVBBj7TF6mHZTz9VIzNoAnyd1-kRL6J1Ig1zAdNnmMg9sb9dI7nS9N9XEc82wGb";
     const SHEET_ID_DIRECTO   = "13GqRrgWTb4inoj1o_HSwPacbHDBCBtkeJ9f5Zx6bN7U";
-    const GIDS = { 0:"1584889573", 1:"1151618335", 2:"1931811566" };
+    const GIDS = { 0:"1584889573", 1:"124546572", 2:"378460028" };
     const POLL_INTERVAL = 15000;
 
     let pestañaActiva = 0;
@@ -339,19 +339,23 @@
     function urlsParaGid(gid) {
         const cb = Date.now();
         return [
-            /* Formato 1: pub (la que ya tenías) */
+            /* Formato 1: pub con output=csv — funciona para TODAS las pestañas cuando el doc
+               está publicado como "Todo el documento" (no importa el formato elegido en la UI,
+               el parámetro output=csv lo sobreescribe). Este es el más confiable. */
             `https://docs.google.com/spreadsheets/d/e/${SHEET_ID_PUBLICADO}/pub?output=csv&gid=${gid}&single=true&cachebust=${cb}`,
-            /* Formato 2: export directo por ID */
-            `https://docs.google.com/spreadsheets/d/${SHEET_ID_DIRECTO}/export?format=csv&gid=${gid}&cachebust=${cb}`,
-            /* Formato 3: gviz query */
+            /* Formato 2: gviz — funciona si el sheet está compartido como "cualquiera con enlace" */
             `https://docs.google.com/spreadsheets/d/${SHEET_ID_DIRECTO}/gviz/tq?tqx=out:csv&gid=${gid}&cachebust=${cb}`,
+            /* Formato 3: export — intento directo */
+            `https://docs.google.com/spreadsheets/d/${SHEET_ID_DIRECTO}/export?format=csv&gid=${gid}&cachebust=${cb}`,
         ];
     }
 
     const WRAPPERS = [
         (u) => `https://corsproxy.io/?${encodeURIComponent(u)}`,
         (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+        (u) => `https://corsproxy.io/?${encodeURIComponent(u)}`,   /* retry corsproxy */
         (u) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
+        (u) => `https://thingproxy.freeboard.io/fetch/${encodeURIComponent(u)}`,
         (u) => u,  /* directo — funciona en local, falla en GitHub Pages */
     ];
 
@@ -363,22 +367,32 @@
 
     async function fetchConProxy(gid) {
         const urls = urlsParaGid(gid);
-        for (const url of urls) {
+        for (let fi = 0; fi < urls.length; fi++) {
+            const url = urls[fi];
             for (let wi = 0; wi < WRAPPERS.length; wi++) {
                 const urlFinal = WRAPPERS[wi](url);
                 try {
-                    const res = await fetch(urlFinal, { signal: AbortSignal.timeout(7000) });
+                    const res = await fetch(urlFinal, {
+                        signal: AbortSignal.timeout(9000),
+                        cache: "no-store"
+                    });
                     if (!res.ok) throw new Error(`HTTP ${res.status}`);
                     const texto = await res.text();
                     if (!esCSVValido(texto)) throw new Error("No es CSV válido");
-                    log(`OK — proxy[${wi}] + formato[${urls.indexOf(url)}] — ${texto.split(/\r?\n/).length} líneas`, "ok");
+                    log(`✓ proxy[${wi}]+fmt[${fi}] — ${texto.split(/\r?\n/).length} líneas`, "ok");
                     return texto;
                 } catch(e) {
-                    log(`proxy[${wi}]+fmt[${urls.indexOf(url)}] falló: ${e.message}`, "warn");
+                    log(`proxy[${wi}]+fmt[${fi}] falló: ${e.message}`, "warn");
+                    if (wi < WRAPPERS.length - 1) await new Promise(r => setTimeout(r, 250));
                 }
             }
         }
-        throw new Error("No se pudo conectar con Google Sheets. Asegúrate que la hoja esté publicada: Archivo → Compartir → Publicar en la web → Publicar.");
+        throw new Error(
+            `No se pudo cargar la hoja (GID ${gid}). ` +
+            "Solución: en el Google Sheet ir a Archivo → Compartir → Publicar en la web → " +
+            "cambiar 'Todo el documento' por la pestaña específica → elegir 'Valores separados por comas (.csv)' → Publicar. " +
+            "Repetir para cada pestaña (Ágape Primera, Segunda, Explosión)."
+        );
     }
 
     async function obtenerDatos() {
@@ -423,6 +437,8 @@
         const staff = [];
         let bloqueActual = "PRODUCCIÓN";
         let modoStaff = false;
+        let staffColArea = -1;      /* índice de columna ÁREA detectado en el header */
+        let staffColEnc  = -1;      /* índice de columna ENCARGADO detectado */
         let avisosPendientes = [];   /* avisos de col G que esperan una actividad */
 
         /* Detectar separador */
@@ -451,38 +467,33 @@
             if (c0U.includes("CRONOGRAMA GENERAL")) continue;
             if (c0U === "HORA INICIO" || c0U === "HORA") continue;
 
-            /* ── SECCIÓN ENCARGADOS ── */
-            if (c0U === "ÁREA" || c0U === "AREA" || c0U === "ÁREAS" ||
-                (limpiarCelda(c[1])).toUpperCase() === "ENCARGADOS" ||
-                cRaw.some(x => x.toUpperCase() === "ÁREA" || x.toUpperCase() === "AREA") &&
-                cRaw.some(x => x.toUpperCase() === "ENCARGADOS" || x.toUpperCase() === "ENCARGADO")) {
-                modoStaff = true;
-                log(`Sección STAFF en línea ${i+1}`, "info");
-                continue;
+            /* ── SECCIÓN ENCARGADOS (solo si aún no estamos en modoStaff) ── */
+            if (!modoStaff) {
+                const rawNorm = cRaw.map(x => limpiarCelda(x).toUpperCase());
+                const esHeaderArea = rawNorm.some(x => x === "ÁREA" || x === "AREA" || x === "ÁREAS");
+                const esHeaderEnc  = rawNorm.some(x => x === "ENCARGADOS" || x === "ENCARGADO");
+                if (esHeaderArea || esHeaderEnc ||
+                    c0U === "ÁREA" || c0U === "AREA" || c0U === "ÁREAS" ||
+                    (limpiarCelda(c[1] || "")).toUpperCase() === "ENCARGADOS") {
+                    modoStaff = true;
+                    staffColArea = rawNorm.findIndex(x => x === "ÁREA" || x === "AREA" || x === "ÁREAS");
+                    staffColEnc  = rawNorm.findIndex(x => x === "ENCARGADOS" || x === "ENCARGADO");
+                    if (staffColArea >= 0 && staffColEnc < 0) staffColEnc = staffColArea + 1;
+                    if (staffColEnc >= 0 && staffColArea < 0) staffColArea = Math.max(0, staffColEnc - 1);
+                    log(`Sección STAFF en línea ${i+1} — col área:${staffColArea} enc:${staffColEnc}`, "info");
+                    continue;
+                }
             }
 
             /* ── MODO STAFF ── */
             if (modoStaff) {
-                /* Usamos cRaw (sin shift) para respetar la estructura real de la hoja.
-                   La hoja tiene: col0=vacía/decorativa, col1=ÁREA, col2=ENCARGADO, col3+=NOTAS
-                   Pero si no hay col decorativa, puede ser col0=ÁREA, col1=ENCARGADO.
-                   Estrategia: buscar la primera columna no vacía como área y la siguiente como encargado. */
-                let staffCols = cRaw.map(limpiarCelda);
-                /* Detectar si primera columna es decorativa (vacía o igual a bloque/hora) */
-                let area = "", encargado = "", notasArr = [];
-                /* Buscar índice de la primera col con texto */
-                const firstNonEmpty = staffCols.findIndex(x => x !== "");
-                if (firstNonEmpty === -1) continue;
-                area      = staffCols[firstNonEmpty];
-                encargado = staffCols[firstNonEmpty + 1] || "";
-                notasArr  = staffCols.slice(firstNonEmpty + 2).filter(Boolean);
-
-                /* Si solo hay un campo no vacío, es el encargado y el área se hereda */
-                if (!encargado) {
-                    encargado = area;
-                    area = "";
-                }
-                const notas = notasArr.join(" · ");
+                /* Usar posiciones de columna detectadas en el header para extraer área y encargado.
+                   cRaw preserva las columnas originales sin eliminar vacías al inicio. */
+                const staffCols = cRaw.map(limpiarCelda);
+                const area      = staffColArea >= 0 ? (staffCols[staffColArea] || "") : "";
+                const encargado = staffColEnc  >= 0 ? (staffCols[staffColEnc]  || "") : "";
+                const notaStart = Math.max(staffColArea, staffColEnc) + 1;
+                const notas     = staffCols.slice(notaStart).filter(Boolean).join(" · ");
                 if (encargado) {
                     /* Si área vacía: celda fusionada en Sheets → heredar última área */
                     const areaFinal = area || (staff.length > 0 ? staff[staff.length-1].area : "");
