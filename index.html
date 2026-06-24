@@ -123,7 +123,6 @@
 
         /* ── TABLE VIEW ── */
         .table-wrap { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 24px; }
-        .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
         table { width: 100%; border-collapse: collapse; }
         thead th {
             background: rgba(8,12,20,0.8); padding: 13px 16px;
@@ -221,143 +220,28 @@
         ::-webkit-scrollbar-track { background: var(--bg-main); }
         ::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 3px; }
 
-        /* ══════════════════════════════════════════
-           RESPONSIVE — TABLET (≤900px)
-        ══════════════════════════════════════════ */
-        @media(max-width:900px){
-            .page-wrap { padding: 16px 18px; }
-            thead th:nth-child(3),   /* Hora fin — redundante en tablet */
-            tbody td:nth-child(3)    { display: none; }
+        .header-brand {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        .header-logo {
+            width: 52px;
+            height: 52px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 1px solid var(--border-bright);
+            /* el logo es negro/blanco, invertimos para que luzca bien en fondo oscuro */
+            filter: invert(1) brightness(0.85);
+            flex-shrink: 0;
         }
 
-        /* ══════════════════════════════════════════
-           RESPONSIVE — MÓVIL (≤600px)
-           La tabla se convierte en tarjetas apiladas.
-        ══════════════════════════════════════════ */
-        @media(max-width:600px){
-            .page-wrap { padding: 12px 14px; }
-
-            /* Header compacto */
-            header { flex-direction: column; gap: 10px; padding-bottom: 16px; margin-bottom: 18px; }
-            .header-left h1 { font-size: 18px; }
-            .header-right { gap: 6px; }
-            .clock-badge { font-size: 13px; padding: 6px 10px; }
-            .live-badge, .sync-badge { font-size: 11px; padding: 6px 10px; }
-
-            /* Tabs ocupan todo el ancho */
-            .tabs { gap: 6px; margin-bottom: 16px; }
-            .tab-btn { flex: 1; text-align: center; padding: 10px 8px; font-size: 12px; }
-
-            /* Toolbar: stats debajo de los botones */
-            .toolbar { flex-direction: column; align-items: flex-start; gap: 8px; }
-            .stats-row { gap: 6px; }
-            .stat-chip { font-size: 11px; padding: 4px 10px; }
-
-            /* Banner activo */
-            #active-banner { padding: 12px 14px; }
-            #active-banner .banner-title { font-size: 14px; }
-
-            /* ── TABLA → TARJETAS EN MÓVIL ──
-               Ocultamos el thead y convertimos cada <tr> en una card
-               usando data-label en cada <td> vía JS (se añade dinámicamente). */
-            .table-wrap { border-radius: 8px; overflow: visible; background: transparent; border: none; }
-            table { display: block; }
-            thead { display: none; }
-            tbody { display: flex; flex-direction: column; gap: 8px; }
-            tbody tr {
-                display: grid;
-                grid-template-columns: auto 1fr;
-                grid-template-rows: auto auto auto;
-                background: var(--bg-card);
-                border: 1px solid var(--border);
-                border-radius: 10px;
-                overflow: hidden;
-                padding: 0;
-            }
-            tbody tr:hover { transform: none; }
-            tbody tr.row-active { border-color: var(--accent); }
-
-            /* Fila de staff — full width */
-            tbody tr.staff-row {
-                grid-template-columns: 1fr 1fr;
-                grid-template-rows: auto;
-                padding: 10px 12px;
-                gap: 4px;
-            }
-            tbody tr.staff-row td { padding: 0; border: none; font-size: 13px; }
-            tbody tr.staff-section-header { grid-template-columns: 1fr; padding: 8px 12px; }
-            tbody tr.staff-section-header td { border: none; }
-
-            /* Celda de tiempo — columna izquierda */
-            tbody td:nth-child(1) {  /* hora inicio */
-                grid-column: 1; grid-row: 1;
-                padding: 10px 12px 4px 12px;
-                font-size: 15px;
-                border: none;
-            }
-            tbody td:nth-child(2) {  /* duración */
-                grid-column: 1; grid-row: 2;
-                padding: 0 12px 10px 12px;
-                border: none;
-            }
-            tbody td:nth-child(3) { display: none; } /* hora fin — omitida en móvil */
-
-            /* Bloque pill — arriba derecha */
-            tbody td:nth-child(4) {
-                grid-column: 2; grid-row: 1;
-                padding: 10px 12px 4px 0;
-                border: none;
-                text-align: right;
-            }
-            /* Actividad — ocupa todo el ancho */
-            tbody td:nth-child(5) {
-                grid-column: 1 / -1; grid-row: 3;  /* fila 3 = debajo de tiempo/bloque */
-                padding: 0 12px 6px 12px;
-                border: none;
-                font-size: 15px;
-            }
-            /* Descripción — debajo de actividad, misma fila */
-            tbody td:nth-child(6) {
-                grid-column: 1 / -1; grid-row: 4;
-                padding: 0 12px 8px 12px;
-                border: none;
-                font-size: 12px;
-            }
-            /* Aviso — abajo, borde superior si existe */
-            tbody td:nth-child(7) {
-                grid-column: 1 / -1; grid-row: 5;
-                padding: 0 12px 10px 12px;
-                border: none;
-            }
-            tbody td:nth-child(7):not(:empty) {
-                border-top: 1px solid var(--border);
-                padding-top: 8px;
-                margin-top: 2px;
-            }
-
-            /* Duración chip más pequeño */
-            .duration-chip { font-size: 10px; padding: 2px 6px; }
-
-            /* Línea de tiempo (card view) */
-            .card { grid-template-columns: 80px 1fr; }
-            .card-aviso { display: none; }
-            .card-time { padding: 10px 8px; }
-            .card-time-start { font-size: 12px; }
-
-            /* Staff grid — 2 columnas en móvil */
-            .staff-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
-            .staff-card { padding: 10px 12px; }
-            .staff-card-name { font-size: 13px; }
-
-            /* Consola más pequeña */
-            #debug-log { font-size: 10px; max-height: 80px; padding: 8px 10px; }
-        }
-
-        /* Pantallas muy pequeñas */
-        @media(max-width:380px){
-            .tab-btn { font-size: 11px; padding: 9px 4px; }
-            .staff-grid { grid-template-columns: 1fr; }
-            .header-right { flex-wrap: wrap; }
+        @media(max-width:700px){
+            .page-wrap{padding:16px;}
+            header{flex-direction:column;}
+            .card{grid-template-columns:80px 1fr;}
+            .card-aviso{display:none;}
+            .header-logo{width:42px;height:42px;}
         }
     </style>
 </head>
@@ -366,8 +250,13 @@
 
     <header>
         <div class="header-left">
-            <h1>CRONOGRAMA MEDIA</h1>
-            <div class="subtitle">ágape.media / control de producción</div>
+            <div class="header-brand">
+                <img src="Logo-media.jpeg" alt="Ágape Media" class="header-logo" onerror="this.style.display='none'">
+                <div>
+                    <h1>CRONOGRAMA MEDIA</h1>
+                    <div class="subtitle">ágape.media / control de producción</div>
+                </div>
+            </div>
         </div>
         <div class="header-right">
             <div class="live-badge"><div class="live-dot"></div>EN VIVO</div>
@@ -404,7 +293,6 @@
 
     <div id="table-view">
         <div class="table-wrap">
-          <div class="table-scroll">
             <table>
                 <thead>
                     <tr>
@@ -421,7 +309,6 @@
                     <tr><td colspan="7" class="state-cell"><div class="state-icon">⟳</div><div class="state-msg">Cargando flujo de datos…</div></td></tr>
                 </tbody>
             </table>
-          </div>
         </div>
     </div>
 
@@ -443,7 +330,7 @@
        El fetch intenta ambos formatos a través de proxies CORS. */
     const SHEET_ID_PUBLICADO = "2PACX-1vTHX3umAF4N-HNU7qVBBj7TF6mHZTz9VIzNoAnyd1-kRL6J1Ig1zAdNnmMg9sb9dI7nS9N9XEc82wGb";
     const SHEET_ID_DIRECTO   = "13GqRrgWTb4inoj1o_HSwPacbHDBCBtkeJ9f5Zx6bN7U";
-    const GIDS = { 0:"1584889573", 1:"124546572", 2:"378460028" };
+    const GIDS = { 0:"1584889573", 1:"1151618335", 2:"1931811566" };
     const POLL_INTERVAL = 15000;
 
     let pestañaActiva = 0;
@@ -474,23 +361,19 @@
     function urlsParaGid(gid) {
         const cb = Date.now();
         return [
-            /* Formato 1: pub con output=csv — funciona para TODAS las pestañas cuando el doc
-               está publicado como "Todo el documento" (no importa el formato elegido en la UI,
-               el parámetro output=csv lo sobreescribe). Este es el más confiable. */
+            /* Formato 1: pub (la que ya tenías) */
             `https://docs.google.com/spreadsheets/d/e/${SHEET_ID_PUBLICADO}/pub?output=csv&gid=${gid}&single=true&cachebust=${cb}`,
-            /* Formato 2: gviz — funciona si el sheet está compartido como "cualquiera con enlace" */
+            /* Formato 2: export directo por ID */
+            `https://docs.google.com/spreadsheets/${SHEET_ID_DIRECTO}/export?format=csv&gid=${gid}&cachebust=${cb}`,
+            /* Formato 3: gviz query */
             `https://docs.google.com/spreadsheets/d/${SHEET_ID_DIRECTO}/gviz/tq?tqx=out:csv&gid=${gid}&cachebust=${cb}`,
-            /* Formato 3: export — intento directo */
-            `https://docs.google.com/spreadsheets/d/${SHEET_ID_DIRECTO}/export?format=csv&gid=${gid}&cachebust=${cb}`,
         ];
     }
 
     const WRAPPERS = [
         (u) => `https://corsproxy.io/?${encodeURIComponent(u)}`,
         (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
-        (u) => `https://corsproxy.io/?${encodeURIComponent(u)}`,   /* retry corsproxy */
         (u) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
-        (u) => `https://thingproxy.freeboard.io/fetch/${encodeURIComponent(u)}`,
         (u) => u,  /* directo — funciona en local, falla en GitHub Pages */
     ];
 
@@ -502,32 +385,22 @@
 
     async function fetchConProxy(gid) {
         const urls = urlsParaGid(gid);
-        for (let fi = 0; fi < urls.length; fi++) {
-            const url = urls[fi];
+        for (const url of urls) {
             for (let wi = 0; wi < WRAPPERS.length; wi++) {
                 const urlFinal = WRAPPERS[wi](url);
                 try {
-                    const res = await fetch(urlFinal, {
-                        signal: AbortSignal.timeout(9000),
-                        cache: "no-store"
-                    });
+                    const res = await fetch(urlFinal, { signal: AbortSignal.timeout(7000) });
                     if (!res.ok) throw new Error(`HTTP ${res.status}`);
                     const texto = await res.text();
                     if (!esCSVValido(texto)) throw new Error("No es CSV válido");
-                    log(`✓ proxy[${wi}]+fmt[${fi}] — ${texto.split(/\r?\n/).length} líneas`, "ok");
+                    log(`OK — proxy[${wi}] + formato[${urls.indexOf(url)}] — ${texto.split(/\r?\n/).length} líneas`, "ok");
                     return texto;
                 } catch(e) {
-                    log(`proxy[${wi}]+fmt[${fi}] falló: ${e.message}`, "warn");
-                    if (wi < WRAPPERS.length - 1) await new Promise(r => setTimeout(r, 250));
+                    log(`proxy[${wi}]+fmt[${urls.indexOf(url)}] falló: ${e.message}`, "warn");
                 }
             }
         }
-        throw new Error(
-            `No se pudo cargar la hoja (GID ${gid}). ` +
-            "Solución: en el Google Sheet ir a Archivo → Compartir → Publicar en la web → " +
-            "cambiar 'Todo el documento' por la pestaña específica → elegir 'Valores separados por comas (.csv)' → Publicar. " +
-            "Repetir para cada pestaña (Ágape Primera, Segunda, Explosión)."
-        );
+        throw new Error("No se pudo conectar con Google Sheets. Asegúrate que la hoja esté publicada: Archivo → Compartir → Publicar en la web → Publicar.");
     }
 
     async function obtenerDatos() {
@@ -572,8 +445,6 @@
         const staff = [];
         let bloqueActual = "PRODUCCIÓN";
         let modoStaff = false;
-        let staffColArea = -1;      /* índice de columna ÁREA detectado en el header */
-        let staffColEnc  = -1;      /* índice de columna ENCARGADO detectado */
         let avisosPendientes = [];   /* avisos de col G que esperan una actividad */
 
         /* Detectar separador */
@@ -587,22 +458,12 @@
             l.split(new RegExp(`${sep.replace(";","\\;")}(?=(?:[^"]*"[^"]*")*[^"]*$)`))
              .map(c => c.replace(/^"|"$/g, '').trim());
 
-        /* Detectar si hay columna decorativa vacía al inicio (col A):
-           Buscamos la fila de cabecera "HORA INICIO" y vemos en qué posición está. */
-        let colOffset = 0;  /* 0 = sin col decorativa, 1 = hay una col vacía al inicio */
-        for (const l of lineas.slice(0, 20)) {
-            const cols = l.split(/[,;]/).map(x => x.replace(/^"|"$/g,'').trim().toUpperCase());
-            const idx  = cols.findIndex(x => x === "HORA INICIO" || x === "HORA");
-            if (idx >= 0) { colOffset = idx; log(`Offset de columna decorativa: ${colOffset}`, "info"); break; }
-        }
-
         for (let i = 0; i < lineas.length; i++) {
             if (!lineas[i].trim()) continue;
             let c = splitLine(lineas[i]);
-            const cRaw = [...c]; /* copia original antes de shift, para modo staff */
 
-            /* Quitar exactamente colOffset columnas decorativas del inicio */
-            for (let o = 0; o < colOffset && c.length > 1; o++) c.shift();
+            /* Descartar prefijos vacíos (col A decorativa) */
+            while (c.length > 1 && limpiarCelda(c[0]) === "") c.shift();
             if (!c.length || (c.length === 1 && !limpiarCelda(c[0]))) continue;
 
             const c0  = limpiarCelda(c[0]);
@@ -611,54 +472,23 @@
             if (c0U.includes("CRONOGRAMA GENERAL")) continue;
             if (c0U === "HORA INICIO" || c0U === "HORA") continue;
 
-            /* ── SECCIÓN ENCARGADOS (solo si aún no estamos en modoStaff) ── */
-            if (!modoStaff) {
-                const rawNorm = cRaw.map(x => limpiarCelda(x).toUpperCase());
-                const esHeaderArea = rawNorm.some(x => x === "ÁREA" || x === "AREA" || x === "ÁREAS");
-                const esHeaderEnc  = rawNorm.some(x => x === "ENCARGADOS" || x === "ENCARGADO");
-                if (esHeaderArea || esHeaderEnc ||
-                    c0U === "ÁREA" || c0U === "AREA" || c0U === "ÁREAS" ||
-                    (limpiarCelda(c[1] || "")).toUpperCase() === "ENCARGADOS") {
-                    modoStaff = true;
-                    staffColArea = rawNorm.findIndex(x => x === "ÁREA" || x === "AREA" || x === "ÁREAS");
-                    staffColEnc  = rawNorm.findIndex(x => x === "ENCARGADOS" || x === "ENCARGADO");
-                    if (staffColArea >= 0 && staffColEnc < 0) staffColEnc = staffColArea + 1;
-                    if (staffColEnc >= 0 && staffColArea < 0) staffColArea = Math.max(0, staffColEnc - 1);
-                    log(`Sección STAFF en línea ${i+1} — col área:${staffColArea} enc:${staffColEnc}`, "info");
-                    continue;
-                }
+            /* ── SECCIÓN ENCARGADOS ── */
+            if (c0U === "ÁREA" || c0U === "AREA" || c0U === "ÁREAS" ||
+                (limpiarCelda(c[1])).toUpperCase() === "ENCARGADOS") {
+                modoStaff = true;
+                log(`Sección STAFF en línea ${i+1}`, "info");
+                continue;
             }
 
             /* ── MODO STAFF ── */
             if (modoStaff) {
-                /* Usar posiciones de columna detectadas en el header para extraer área y encargado.
-                   cRaw preserva las columnas originales sin eliminar vacías al inicio. */
-                const staffCols = cRaw.map(limpiarCelda);
-                /* Log para depurar estructura de columnas */
-                log(`STAFF fila ${i+1}: cols=[${staffCols.map((x,i)=>x?`${i}:${x}`:"").filter(Boolean).join("|")}] colArea=${staffColArea} colEnc=${staffColEnc}`, "info");
-                const area      = staffColArea >= 0 ? (staffCols[staffColArea] || "") : "";
-                const encargado = staffColEnc  >= 0 ? (staffCols[staffColEnc]  || "") : "";
-                const notaStart = Math.max(staffColArea >= 0 ? staffColArea : 0, staffColEnc >= 0 ? staffColEnc : 0) + 1;
-                const notas     = staffCols.slice(notaStart).filter(Boolean).join(" · ");
-                if (area && encargado) {
-                    /* Caso normal: área y encargado presentes */
-                    staff.push({ area, encargado, notas });
-                } else if (area && !encargado) {
-                    /* Celda ENCARGADO fusionada → heredar encargado de fila anterior.
-                       Ej: OBS y SWITCHER comparten el mismo encargado. */
-                    const encHeredado = staff.length > 0 ? staff[staff.length-1].encargado : "";
-                    staff.push({ area, encargado: encHeredado, notas });
-                } else if (!area && encargado) {
-                    /* Celda ÁREA fusionada → heredar área de fila anterior. */
-                    const areaHeredada = staff.length > 0 ? staff[staff.length-1].area : "";
-                    staff.push({ area: areaHeredada, encargado, notas });
-                } else if (!area && !encargado) {
-                    /* Ambas celdas fusionadas → heredar área y encargado de fila anterior.
-                       Puede pasar si se fusionan 3+ filas verticalmente. */
-                    if (staff.length > 0) {
-                        const prev = staff[staff.length-1];
-                        staff.push({ area: prev.area, encargado: prev.encargado, notas });
-                    }
+                const area      = limpiarCelda(c[0]);
+                const encargado = limpiarCelda(c[1]);
+                const notas     = c.slice(2).map(limpiarCelda).filter(Boolean).join(" · ");
+                if (encargado) {
+                    /* Si área vacía: celda fusionada en Sheets → heredar última área */
+                    const areaFinal = area || (staff.length > 0 ? staff[staff.length-1].area : "");
+                    staff.push({ area: areaFinal, encargado, notas });
                 }
                 continue;
             }
@@ -808,9 +638,8 @@
             html += `<tr class="staff-section-header"><td colspan="7"><span class="staff-section-label">▸ EQUIPO TÉCNICO / ENCARGADOS</span></td></tr>`;
             for (const s of staff) {
                 html += `
-                <tr class="staff-row">
-                    <td colspan="2" style="color:var(--text-muted);font-size:11px;font-family:'JetBrains Mono',monospace;padding:0">STAFF</td>
-                    <td style="display:none"></td>
+                <tr>
+                    <td colspan="3" style="color:var(--text-muted);font-size:11px;font-family:'JetBrains Mono',monospace;">STAFF</td>
                     <td style="font-weight:700;color:var(--text-main)">${s.area}</td>
                     <td class="staff-name-cell">${s.encargado}</td>
                     <td class="desc-cell" colspan="2">${s.notas}</td>
