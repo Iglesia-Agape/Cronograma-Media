@@ -351,55 +351,72 @@
         box.scrollTop = box.scrollHeight;
     }
 
-    /* ── FETCH con múltiples URLs + proxies CORS ──
-       Estrategia: intentamos 3 formatos de URL × 3 proxies = 9 combinaciones.
-       - URL /pub  → la que usabas (a veces da 401 en proxies)
-       - URL /export → exportación directa, más confiable con proxies
-       - URL /gviz  → endpoint de visualización, no requiere publicación pública
-    ── */
-    function urlsParaGid(gid) {
-        const cb = Date.now();
-        return [
-            /* Formato 1: pub (la que ya tenías) */
-            `https://docs.google.com/spreadsheets/d/e/${SHEET_ID_PUBLICADO}/pub?output=csv&gid=${gid}&single=true&cachebust=${cb}`,
-            /* Formato 2: export directo por ID */
-            `https://docs.google.com/spreadsheets/${SHEET_ID_DIRECTO}/export?format=csv&gid=${gid}&cachebust=${cb}`,
-            /* Formato 3: gviz query */
-            `https://docs.google.com/spreadsheets/d/${SHEET_ID_DIRECTO}/gviz/tq?tqx=out:csv&gid=${gid}&cachebust=${cb}`,
-        ];
+    /* ── FETCH ──────────────────────────────────────────────────────────────
+       ESTRATEGIA (de más confiable a menos):
+
+       1. /gviz directo — Google envía CORS headers en este endpoint cuando
+          la hoja es pública. No necesita proxy. Es la opción más rápida.
+
+       2. /pub a través de proxies — la URL larga "PACX" que usabas.
+          Algunos proxies la aceptan, otros la rechazan (401/404).
+          Intentamos 3 proxies distintos.
+
+       3. /pub directo — funciona solo en desarrollo local, falla en
+          GitHub Pages por CORS, pero vale intentarlo como último recurso.
+    ──────────────────────────────────────────────────────────────────────── */
+    function esCSVValido(t) {
+        return t && t.length > 20 && !t.trimStart().startsWith("<");
     }
 
-    const WRAPPERS = [
-        (u) => `https://corsproxy.io/?${encodeURIComponent(u)}`,
-        (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
-        (u) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
-        (u) => u,  /* directo — funciona en local, falla en GitHub Pages */
-    ];
-
-    function esCSVValido(texto) {
-        if (!texto || texto.length < 20) return false;
-        if (texto.trimStart().startsWith("<")) return false;  /* HTML = error */
-        return true;
+    async function intentarFetch(url, timeoutMs = 7000) {
+        const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const texto = await res.text();
+        if (!esCSVValido(texto)) throw new Error("Respuesta no es CSV");
+        return texto;
     }
 
     async function fetchConProxy(gid) {
-        const urls = urlsParaGid(gid);
-        for (const url of urls) {
-            for (let wi = 0; wi < WRAPPERS.length; wi++) {
-                const urlFinal = WRAPPERS[wi](url);
-                try {
-                    const res = await fetch(urlFinal, { signal: AbortSignal.timeout(7000) });
-                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                    const texto = await res.text();
-                    if (!esCSVValido(texto)) throw new Error("No es CSV válido");
-                    log(`OK — proxy[${wi}] + formato[${urls.indexOf(url)}] — ${texto.split(/\r?\n/).length} líneas`, "ok");
-                    return texto;
-                } catch(e) {
-                    log(`proxy[${wi}]+fmt[${urls.indexOf(url)}] falló: ${e.message}`, "warn");
-                }
+        const cb = Date.now();
+
+        /* ── INTENTO 1: /gviz directo (CORS nativo de Google) ── */
+        const urlGviz = `https://docs.google.com/spreadsheets/d/${SHEET_ID_DIRECTO}/gviz/tq?tqx=out:csv&gid=${gid}&cb=${cb}`;
+        try {
+            const texto = await intentarFetch(urlGviz);
+            log(`OK (gviz directo) — ${texto.split(/\r?\n/).length} líneas`, "ok");
+            return texto;
+        } catch(e) {
+            log(`gviz directo falló: ${e.message}`, "warn");
+        }
+
+        /* ── INTENTO 2: /pub a través de proxies CORS ── */
+        const urlPub = `https://docs.google.com/spreadsheets/d/e/${SHEET_ID_PUBLICADO}/pub?output=csv&gid=${gid}&single=true&cb=${cb}`;
+        const proxies = [
+            `https://corsproxy.io/?${encodeURIComponent(urlPub)}`,
+            `https://api.allorigins.win/raw?url=${encodeURIComponent(urlPub)}`,
+            `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(urlPub)}`,
+            `https://thingproxy.freeboard.io/fetch/${urlPub}`,
+        ];
+        for (let i = 0; i < proxies.length; i++) {
+            try {
+                const texto = await intentarFetch(proxies[i]);
+                log(`OK (proxy[${i}]) — ${texto.split(/\r?\n/).length} líneas`, "ok");
+                return texto;
+            } catch(e) {
+                log(`proxy[${i}] falló: ${e.message}`, "warn");
             }
         }
-        throw new Error("No se pudo conectar con Google Sheets. Asegúrate que la hoja esté publicada: Archivo → Compartir → Publicar en la web → Publicar.");
+
+        /* ── INTENTO 3: /pub directo (solo funciona en local) ── */
+        try {
+            const texto = await intentarFetch(urlPub);
+            log(`OK (directo) — ${texto.split(/\r?\n/).length} líneas`, "ok");
+            return texto;
+        } catch(e) {
+            log(`directo falló: ${e.message}`, "warn");
+        }
+
+        throw new Error("No se pudo conectar. Verifica que la hoja esté publicada en Google Sheets: Archivo → Compartir → Publicar en la web.");
     }
 
     async function obtenerDatos() {
