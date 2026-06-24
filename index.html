@@ -452,14 +452,22 @@
             l.split(new RegExp(`${sep.replace(";","\\;")}(?=(?:[^"]*"[^"]*")*[^"]*$)`))
              .map(c => c.replace(/^"|"$/g, '').trim());
 
+        /* Detectar si hay columna decorativa vacía al inicio (col A):
+           Buscamos la fila de cabecera "HORA INICIO" y vemos en qué posición está. */
+        let colOffset = 0;  /* 0 = sin col decorativa, 1 = hay una col vacía al inicio */
+        for (const l of lineas.slice(0, 20)) {
+            const cols = l.split(/[,;]/).map(x => x.replace(/^"|"$/g,'').trim().toUpperCase());
+            const idx  = cols.findIndex(x => x === "HORA INICIO" || x === "HORA");
+            if (idx >= 0) { colOffset = idx; log(`Offset de columna decorativa: ${colOffset}`, "info"); break; }
+        }
+
         for (let i = 0; i < lineas.length; i++) {
             if (!lineas[i].trim()) continue;
             let c = splitLine(lineas[i]);
             const cRaw = [...c]; /* copia original antes de shift, para modo staff */
 
-            /* Descartar UN solo prefijo vacío (col A decorativa).
-               No usar while — si hora está fusionada las celdas vacías son datos. */
-            if (c.length > 1 && limpiarCelda(c[0]) === "" && limpiarCelda(c[1]) !== "") c.shift();
+            /* Quitar exactamente colOffset columnas decorativas del inicio */
+            for (let o = 0; o < colOffset && c.length > 1; o++) c.shift();
             if (!c.length || (c.length === 1 && !limpiarCelda(c[0]))) continue;
 
             const c0  = limpiarCelda(c[0]);
@@ -498,11 +506,17 @@
                 const notaStart = Math.max(staffColArea >= 0 ? staffColArea : 0, staffColEnc >= 0 ? staffColEnc : 0) + 1;
                 const notas     = staffCols.slice(notaStart).filter(Boolean).join(" · ");
                 if (encargado) {
-                    /* Si área vacía: celda fusionada en Sheets → heredar última área */
+                    /* Caso normal: área y encargado en sus columnas correctas */
                     const areaFinal = area || (staff.length > 0 ? staff[staff.length-1].area : "");
                     staff.push({ area: areaFinal, encargado, notas });
-                } else {
-                    log(`STAFF fila ${i+1} IGNORADA — enc vacío. area="${area}" cols=${JSON.stringify(staffCols)}`, "warn");
+                } else if (area) {
+                    /* Celda fusionada invertida: el texto está en col ÁREA pero es el encargado.
+                       Esto pasa cuando Sheets exporta filas con celda de ENCARGADO fusionada vacía
+                       pero la col ÁREA tiene el nombre del rol (ej. SWITCHER, EDICIÓN, AUDIO REMOTO).
+                       → Heredar área anterior, usar este texto como encargado. */
+                    const areaHeredada = staff.length > 0 ? staff[staff.length-1].area : "";
+                    staff.push({ area: areaHeredada, encargado: area, notas });
+                    log(`STAFF fila ${i+1} — enc desde col área: ${area} → área heredada: ${areaHeredada}`, "info");
                 }
                 continue;
             }
