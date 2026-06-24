@@ -123,6 +123,7 @@
 
         /* ── TABLE VIEW ── */
         .table-wrap { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 24px; }
+        .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
         table { width: 100%; border-collapse: collapse; }
         thead th {
             background: rgba(8,12,20,0.8); padding: 13px 16px;
@@ -220,11 +221,143 @@
         ::-webkit-scrollbar-track { background: var(--bg-main); }
         ::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 3px; }
 
-        @media(max-width:700px){
-            .page-wrap{padding:16px;}
-            header{flex-direction:column;}
-            .card{grid-template-columns:80px 1fr;}
-            .card-aviso{display:none;}
+        /* ══════════════════════════════════════════
+           RESPONSIVE — TABLET (≤900px)
+        ══════════════════════════════════════════ */
+        @media(max-width:900px){
+            .page-wrap { padding: 16px 18px; }
+            thead th:nth-child(3),   /* Hora fin — redundante en tablet */
+            tbody td:nth-child(3)    { display: none; }
+        }
+
+        /* ══════════════════════════════════════════
+           RESPONSIVE — MÓVIL (≤600px)
+           La tabla se convierte en tarjetas apiladas.
+        ══════════════════════════════════════════ */
+        @media(max-width:600px){
+            .page-wrap { padding: 12px 14px; }
+
+            /* Header compacto */
+            header { flex-direction: column; gap: 10px; padding-bottom: 16px; margin-bottom: 18px; }
+            .header-left h1 { font-size: 18px; }
+            .header-right { gap: 6px; }
+            .clock-badge { font-size: 13px; padding: 6px 10px; }
+            .live-badge, .sync-badge { font-size: 11px; padding: 6px 10px; }
+
+            /* Tabs ocupan todo el ancho */
+            .tabs { gap: 6px; margin-bottom: 16px; }
+            .tab-btn { flex: 1; text-align: center; padding: 10px 8px; font-size: 12px; }
+
+            /* Toolbar: stats debajo de los botones */
+            .toolbar { flex-direction: column; align-items: flex-start; gap: 8px; }
+            .stats-row { gap: 6px; }
+            .stat-chip { font-size: 11px; padding: 4px 10px; }
+
+            /* Banner activo */
+            #active-banner { padding: 12px 14px; }
+            #active-banner .banner-title { font-size: 14px; }
+
+            /* ── TABLA → TARJETAS EN MÓVIL ──
+               Ocultamos el thead y convertimos cada <tr> en una card
+               usando data-label en cada <td> vía JS (se añade dinámicamente). */
+            .table-wrap { border-radius: 8px; overflow: visible; background: transparent; border: none; }
+            table { display: block; }
+            thead { display: none; }
+            tbody { display: flex; flex-direction: column; gap: 8px; }
+            tbody tr {
+                display: grid;
+                grid-template-columns: auto 1fr;
+                grid-template-rows: auto auto auto;
+                background: var(--bg-card);
+                border: 1px solid var(--border);
+                border-radius: 10px;
+                overflow: hidden;
+                padding: 0;
+            }
+            tbody tr:hover { transform: none; }
+            tbody tr.row-active { border-color: var(--accent); }
+
+            /* Fila de staff — full width */
+            tbody tr.staff-row {
+                grid-template-columns: 1fr 1fr;
+                grid-template-rows: auto;
+                padding: 10px 12px;
+                gap: 4px;
+            }
+            tbody tr.staff-row td { padding: 0; border: none; font-size: 13px; }
+            tbody tr.staff-section-header { grid-template-columns: 1fr; padding: 8px 12px; }
+            tbody tr.staff-section-header td { border: none; }
+
+            /* Celda de tiempo — columna izquierda */
+            tbody td:nth-child(1) {  /* hora inicio */
+                grid-column: 1; grid-row: 1;
+                padding: 10px 12px 4px 12px;
+                font-size: 15px;
+                border: none;
+            }
+            tbody td:nth-child(2) {  /* duración */
+                grid-column: 1; grid-row: 2;
+                padding: 0 12px 10px 12px;
+                border: none;
+            }
+            tbody td:nth-child(3) { display: none; } /* hora fin — omitida en móvil */
+
+            /* Bloque pill — arriba derecha */
+            tbody td:nth-child(4) {
+                grid-column: 2; grid-row: 1;
+                padding: 10px 12px 4px 0;
+                border: none;
+                text-align: right;
+            }
+            /* Actividad — ocupa todo el ancho */
+            tbody td:nth-child(5) {
+                grid-column: 1 / -1; grid-row: 3;  /* fila 3 = debajo de tiempo/bloque */
+                padding: 0 12px 6px 12px;
+                border: none;
+                font-size: 15px;
+            }
+            /* Descripción — debajo de actividad, misma fila */
+            tbody td:nth-child(6) {
+                grid-column: 1 / -1; grid-row: 4;
+                padding: 0 12px 8px 12px;
+                border: none;
+                font-size: 12px;
+            }
+            /* Aviso — abajo, borde superior si existe */
+            tbody td:nth-child(7) {
+                grid-column: 1 / -1; grid-row: 5;
+                padding: 0 12px 10px 12px;
+                border: none;
+            }
+            tbody td:nth-child(7):not(:empty) {
+                border-top: 1px solid var(--border);
+                padding-top: 8px;
+                margin-top: 2px;
+            }
+
+            /* Duración chip más pequeño */
+            .duration-chip { font-size: 10px; padding: 2px 6px; }
+
+            /* Línea de tiempo (card view) */
+            .card { grid-template-columns: 80px 1fr; }
+            .card-aviso { display: none; }
+            .card-time { padding: 10px 8px; }
+            .card-time-start { font-size: 12px; }
+
+            /* Staff grid — 2 columnas en móvil */
+            .staff-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+            .staff-card { padding: 10px 12px; }
+            .staff-card-name { font-size: 13px; }
+
+            /* Consola más pequeña */
+            #debug-log { font-size: 10px; max-height: 80px; padding: 8px 10px; }
+        }
+
+        /* Pantallas muy pequeñas */
+        @media(max-width:380px){
+            .tab-btn { font-size: 11px; padding: 9px 4px; }
+            .staff-grid { grid-template-columns: 1fr; }
+            .header-right { flex-wrap: wrap; }
         }
     </style>
 </head>
@@ -271,6 +404,7 @@
 
     <div id="table-view">
         <div class="table-wrap">
+          <div class="table-scroll">
             <table>
                 <thead>
                     <tr>
@@ -287,6 +421,7 @@
                     <tr><td colspan="7" class="state-cell"><div class="state-icon">⟳</div><div class="state-msg">Cargando flujo de datos…</div></td></tr>
                 </tbody>
             </table>
+          </div>
         </div>
     </div>
 
@@ -509,15 +644,21 @@
                     /* Caso normal: área y encargado presentes */
                     staff.push({ area, encargado, notas });
                 } else if (area && !encargado) {
-                    /* Celda de ENCARGADO fusionada (vacía en CSV) → heredar encargado de la fila anterior.
-                       Ej: OBS+SWITCHER comparten encargado, TV+AUDIO REMOTO comparten encargado. */
+                    /* Celda ENCARGADO fusionada → heredar encargado de fila anterior.
+                       Ej: OBS y SWITCHER comparten el mismo encargado. */
                     const encHeredado = staff.length > 0 ? staff[staff.length-1].encargado : "";
                     staff.push({ area, encargado: encHeredado, notas });
-                    log(`STAFF fila ${i+1} — enc heredado para área "${area}": ${encHeredado}`, "info");
                 } else if (!area && encargado) {
-                    /* Celda de ÁREA fusionada (vacía en CSV) → heredar área de la fila anterior */
+                    /* Celda ÁREA fusionada → heredar área de fila anterior. */
                     const areaHeredada = staff.length > 0 ? staff[staff.length-1].area : "";
                     staff.push({ area: areaHeredada, encargado, notas });
+                } else if (!area && !encargado) {
+                    /* Ambas celdas fusionadas → heredar área y encargado de fila anterior.
+                       Puede pasar si se fusionan 3+ filas verticalmente. */
+                    if (staff.length > 0) {
+                        const prev = staff[staff.length-1];
+                        staff.push({ area: prev.area, encargado: prev.encargado, notas });
+                    }
                 }
                 continue;
             }
@@ -667,8 +808,9 @@
             html += `<tr class="staff-section-header"><td colspan="7"><span class="staff-section-label">▸ EQUIPO TÉCNICO / ENCARGADOS</span></td></tr>`;
             for (const s of staff) {
                 html += `
-                <tr>
-                    <td colspan="3" style="color:var(--text-muted);font-size:11px;font-family:'JetBrains Mono',monospace;">STAFF</td>
+                <tr class="staff-row">
+                    <td colspan="2" style="color:var(--text-muted);font-size:11px;font-family:'JetBrains Mono',monospace;padding:0">STAFF</td>
+                    <td style="display:none"></td>
                     <td style="font-weight:700;color:var(--text-main)">${s.area}</td>
                     <td class="staff-name-cell">${s.encargado}</td>
                     <td class="desc-cell" colspan="2">${s.notas}</td>
