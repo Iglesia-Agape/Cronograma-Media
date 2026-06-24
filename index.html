@@ -231,7 +231,6 @@
             border-radius: 50%;
             object-fit: cover;
             border: 1px solid var(--border-bright);
-            /* el logo es negro/blanco, invertimos para que luzca bien en fondo oscuro */
             filter: invert(1) brightness(0.85);
             flex-shrink: 0;
         }
@@ -241,7 +240,7 @@
             header{flex-direction:column;}
             .card{grid-template-columns:80px 1fr;}
             .card-aviso{display:none;}
-            .header-logo{width:42px;height:42px;}
+            .header-logo{width:40px;height:40px;}
         }
     </style>
 </head>
@@ -458,114 +457,79 @@
             l.split(new RegExp(`${sep.replace(";","\\;")}(?=(?:[^"]*"[^"]*")*[^"]*$)`))
              .map(c => c.replace(/^"|"$/g, '').trim());
 
-        /* ── Detectar cuántas columnas vacías hay al inicio (offset fijo) ──
-           La hoja tiene col A vacía como margen. Detectamos el offset mirando
-           la fila de cabecera "HORA INICIO" y viendo en qué índice aparece. */
-        let colOffset = 0;
-        for (const linea of lineas) {
-            const cels = splitLine(linea);
-            const idx = cels.findIndex(x => limpiarCelda(x).toUpperCase() === "HORA INICIO");
-            if (idx >= 0) { colOffset = idx; break; }
-        }
-        log(`Offset de columnas detectado: ${colOffset}`, "info");
-
-        /* Función para leer col por letra lógica (A=hora, B=dur, C=fin, D=act, E=desc, G=aviso) */
-        const col = (c, n) => limpiarCelda(c[colOffset + n] || "");
-        /* n: 0=HORA INICIO, 1=DURACIÓN, 2=HORA FINAL, 3=ACTIVIDAD, 4=DESCRIPCIÓN, 6=AVISO */
-
         for (let i = 0; i < lineas.length; i++) {
             if (!lineas[i].trim()) continue;
-            const c = splitLine(lineas[i]);
+            let c = splitLine(lineas[i]);
 
-            /* Valores de cada columna por posición fija */
-            const cA = col(c, 0);  /* HORA INICIO */
-            const cB = col(c, 1);  /* DURACIÓN */
-            const cC = col(c, 2);  /* HORA FINAL */
-            const cD = col(c, 3);  /* ACTIVIDAD */
-            const cE = col(c, 4);  /* DESCRIPCIÓN */
-            const cG = col(c, 6) || col(c, 5);  /* AVISO */
+            /* Descartar prefijos vacíos (col A decorativa) */
+            while (c.length > 1 && limpiarCelda(c[0]) === "") c.shift();
+            if (!c.length || (c.length === 1 && !limpiarCelda(c[0]))) continue;
 
-            /* Texto en cualquier celda sin offset (para detección de sección) */
-            const c0raw = limpiarCelda(c[0] || "").toUpperCase();
-            const c1raw = limpiarCelda(c[1] || "").toUpperCase();
+            const c0  = limpiarCelda(c[0]);
+            const c0U = c0.toUpperCase();
 
-            /* Saltar filas completamente vacías */
-            if (c.every(x => !limpiarCelda(x))) continue;
+            if (c0U.includes("CRONOGRAMA GENERAL")) continue;
+            if (c0U === "HORA INICIO" || c0U === "HORA") continue;
 
-            /* Saltar títulos decorativos */
-            if (c0raw.includes("CRONOGRAMA GENERAL") || c1raw.includes("CRONOGRAMA GENERAL")) continue;
-            if (cA.toUpperCase() === "HORA INICIO" || cA.toUpperCase() === "HORA") continue;
-
-            /* ── SECCIÓN ENCARGADOS ──
-               La cabecera de staff tiene "ÁREA" en col offset+0 y "ENCARGADOS" en col offset+1,
-               O bien "ÁREA"/"AREA" en cualquier posición inicial. */
-            const todoCeldasU = c.map(x => limpiarCelda(x).toUpperCase());
-            if (todoCeldasU.includes("ENCARGADOS") || todoCeldasU.includes("ÁREA") && todoCeldasU.includes("ENCARGADOS")) {
+            /* ── SECCIÓN ENCARGADOS ── */
+            if (c0U === "ÁREA" || c0U === "AREA" || c0U === "ÁREAS" ||
+                (limpiarCelda(c[1])).toUpperCase() === "ENCARGADOS") {
                 modoStaff = true;
                 log(`Sección STAFF en línea ${i+1}`, "info");
-                continue;
-            }
-            /* Detección alternativa: col 0 o col 1 es ÁREA/AREA sin offset */
-            if (!modoStaff && (c0raw === "ÁREA" || c0raw === "AREA" || c1raw === "ÁREA" || c1raw === "AREA")) {
-                modoStaff = true;
-                log(`Sección STAFF (alt) en línea ${i+1}`, "info");
                 continue;
             }
 
             /* ── MODO STAFF ── */
             if (modoStaff) {
-                /* En la sección staff las columnas son: col offset+0 = ÁREA, col offset+1 = ENCARGADO */
-                const area      = col(c, 0);
-                const encargado = col(c, 1);
-                const notas     = [col(c,2), col(c,3), col(c,4)].filter(Boolean).join(" · ");
+                const area      = limpiarCelda(c[0]);
+                const encargado = limpiarCelda(c[1]);
+                const notas     = c.slice(2).map(limpiarCelda).filter(Boolean).join(" · ");
                 if (encargado) {
-                    /* Herencia de área para celdas fusionadas (Switcher, etc.) */
+                    /* Si área vacía: celda fusionada en Sheets → heredar última área */
                     const areaFinal = area || (staff.length > 0 ? staff[staff.length-1].area : "");
                     staff.push({ area: areaFinal, encargado, notas });
                 }
                 continue;
             }
 
-            /* Aviso de col G en cualquier fila */
-            const avisoRaw = cG;
+            /* Aviso de col G o col F en CUALQUIER fila */
+            const avisoRaw = limpiarCelda(c[6]) || limpiarCelda(c[5]) || "";
 
-            /* ── FILA DE BLOQUE ──
-               Criterio seguro: solo col A (hora) tiene texto con formato de nombre de sección
-               (no parece una hora) Y cols B,C,D,E vacías.
-               Excepción: si col D tiene texto, es actividad aunque A,B,C estén vacías. */
-            const soloColA = cA && !cB && !cC && !cD && !cE;
-            const esHora   = /^\d{1,2}[:.]\d{2}/.test(cA);  /* "7:56", "8:00 a.m." etc */
-            if (soloColA && !esHora) {
+            /* ── FILA DE BLOQUE (solo col 0 tiene texto) ── */
+            const restoVacio = c.slice(1).every(x => !limpiarCelda(x));
+            if (c0 && restoVacio) {
                 if (avisoRaw) avisosPendientes.push(avisoRaw);
-                bloqueActual = cA;
+                bloqueActual = c0;
                 log(`Bloque: "${bloqueActual}"`, "info");
                 continue;
             }
 
-            /* ── FILA DE ACTIVIDAD ──
-               Puede tener hora (cA) o no (celda fusionada → heredar de anterior).
-               Lo que importa es que cD tenga el nombre de la actividad. */
-            const actividad   = cD;
-            const descripcion = cE;
+            const horaInicio  = limpiarCelda(c[0]);
+            const duracion    = limpiarCelda(c[1]);
+            const horaFinal   = limpiarCelda(c[2]);
+            const actividad   = limpiarCelda(c[3]);
+            const descripcion = limpiarCelda(c[4]);
 
-            /* Fila sin actividad útil → guardar aviso y seguir */
+            /* Fila sin actividad → guardar aviso si lo hay */
             if (!actividad || actividad === bloqueActual) {
                 if (avisoRaw) avisosPendientes.push(avisoRaw);
                 continue;
             }
 
-            /* Herencia de hora para celdas fusionadas verticalmente */
+            /* Herencia de hora para celdas fusionadas verticalmente:
+               si hora vacía, usar la última registrada (bloque cierre tiene múltiples
+               actividades bajo una sola celda de hora en la hoja). */
             const ultimaAct = actividades.length > 0 ? actividades[actividades.length-1] : null;
-            const horaInicio = cA || (ultimaAct ? ultimaAct.horaInicio : "");
-            const duracion   = cB || (ultimaAct ? ultimaAct.duracion   : "");
-            const horaFinal  = cC || (ultimaAct ? ultimaAct.horaFinal  : "");
+            const horaInicioFinal = horaInicio || (ultimaAct ? ultimaAct.horaInicio : "");
+            const duracionFinal   = duracion   || (ultimaAct ? ultimaAct.duracion   : "");
+            const horaFinalFinal  = horaFinal  || (ultimaAct ? ultimaAct.horaFinal  : "");
 
-            /* Acumular avisos */
+            /* Acumular aviso de esta fila + pendientes, deduplicar */
             if (avisoRaw) avisosPendientes.push(avisoRaw);
             const avisoFinal = [...new Set(avisosPendientes)].join(" · ");
             avisosPendientes = [];
 
-            actividades.push({ horaInicio, duracion, horaFinal, bloque: bloqueActual, actividad, descripcion, aviso: avisoFinal });
+            actividades.push({ horaInicio: horaInicioFinal, duracion: duracionFinal, horaFinal: horaFinalFinal, bloque: bloqueActual, actividad, descripcion, aviso: avisoFinal });
         }
 
         return { actividades, staff };
