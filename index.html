@@ -385,24 +385,40 @@
         return texto;
     }
 
-    async function fetchCSV(gid) {
+    /* Cada hoja trae un título "CRONOGRAMA GENERAL - ÁGAPE (PRIMERA REUNIÓN)", etc.
+       Con esto verificamos que la respuesta sea de la pestaña que pedimos. */
+    const TITULOS = ["PRIMERA", "SEGUNDA", "EXPLOSI"];
+    function tituloDe(csv) {
+        const m = csv.match(/CRONOGRAMA GENERAL[^,"\r\n]*/i);
+        return m ? m[0].trim() : "";
+    }
+
+    async function fetchCSV(gid, idx) {
         const cb = Date.now();
         const urlPub = `https://docs.google.com/spreadsheets/d/e/${SHEET_ID_PUBLICADO}/pub?output=csv&gid=${gid}&single=true&cb=${cb}`;
         const intentos = [
-            ["gviz", `https://docs.google.com/spreadsheets/d/${SHEET_ID_DIRECTO}/gviz/tq?tqx=out:csv&gid=${gid}&cb=${cb}`],
+            ["gviz", `https://docs.google.com/spreadsheets/d/${SHEET_ID_DIRECTO}/gviz/tq?tqx=out:csv&headers=0&gid=${gid}&cb=${cb}`],
             ["pub",  urlPub],
             ["proxy", `https://api.allorigins.win/raw?url=${encodeURIComponent(urlPub)}`],
         ];
+        let hubo_pestana_equivocada = false;
         for (const [nombre, url] of intentos) {
             try {
                 const texto = await intentarFetch(url);
-                log(`gid ${gid}: OK vía ${nombre}`, "ok");
+                const t = tituloDe(texto);
+                if (t && !t.toUpperCase().includes(TITULOS[idx])) {
+                    hubo_pestana_equivocada = true;
+                    throw new Error(`devolvió otra pestaña ("${t}")`);
+                }
+                log(`gid ${gid}: OK vía ${nombre} — "${t || "sin título"}"`, "ok");
                 return texto;
             } catch (e) {
                 log(`gid ${gid}: ${nombre} falló (${e.message})`, "warn");
             }
         }
-        throw new Error("No se pudo leer la hoja. Verifica que esté publicada (Archivo → Compartir → Publicar en la web) y compartida como \"cualquiera con el enlace\".");
+        if (hubo_pestana_equivocada)
+            throw new Error("Google está devolviendo otra pestaña. Comparte la hoja como \"Cualquier persona con el enlace: Lector\" y vuelve a publicar el documento completo.");
+        throw new Error("No se pudo leer la hoja. Verifica que esté compartida como \"Cualquier persona con el enlace\" y publicada en la web.");
     }
 
     /* Carga las 3 pestañas en paralelo. Cada una se guarda por separado,
@@ -414,7 +430,7 @@
         setSync("loading", "Actualizando…");
         await Promise.all(GIDS.map(async (gid, i) => {
             try {
-                const csv = await fetchCSV(gid);
+                const csv = await fetchCSV(gid, i);
                 cache[i] = { datos: parsearCSV(csv), ts: Date.now() };
                 delete errores[i];
             } catch (e) {
@@ -502,7 +518,7 @@
             }
 
             const [horaInicio = "", duracion = "", horaFinal = "", actividad = "", descripcion = ""] = c;
-            if (!actividad || actividad === bloqueActual) {
+            if (!actividad) {
                 if (avisoRaw) avisosPendientes.push(avisoRaw);
                 continue;
             }
