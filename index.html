@@ -251,6 +251,29 @@
         .console-wrap { display: none; }
         body.debug .console-wrap { display: block; }
         @media(max-width:700px){ .card-aviso-mobile { display: block; } }
+
+        /* ── MEJORAS v2 ── */
+        :root { --c-mine: #2dd4bf; }
+        .mi-select {
+            background: var(--bg-card); border: 1px solid var(--border); color: var(--text-sub);
+            padding: 7px 10px; border-radius: 6px; font-size: 12px; font-weight: 600;
+            font-family: 'Inter', sans-serif; max-width: 190px; cursor: pointer;
+        }
+        .mi-select.set { border-color: rgba(45,212,191,.5); color: var(--c-mine); }
+        .toolbar-left { flex-wrap: wrap; }
+        .mine-badge {
+            display: inline-block; margin-left: 8px; padding: 2px 8px; border-radius: 4px;
+            background: rgba(45,212,191,.12); border: 1px solid rgba(45,212,191,.35);
+            color: var(--c-mine); font-size: 10px; font-weight: 700; letter-spacing: .5px; white-space: nowrap;
+        }
+        tr.row-mine td:first-child { box-shadow: inset 3px 0 0 var(--c-mine); }
+        .card.card-mine { border-color: rgba(45,212,191,.45); }
+        tr.staff-mine td, .staff-card.staff-mine { background: rgba(45,212,191,.07); }
+        .staff-card.staff-mine { border-color: rgba(45,212,191,.5); border-left-color: var(--c-mine); }
+        .banner-right { text-align: right; }
+        .banner-countdown { font-family: 'JetBrains Mono', monospace; font-size: 26px; font-weight: 800; color: var(--accent); line-height: 1; }
+        .banner-cd-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); margin: 2px 0 6px; }
+        .banner-next { margin-top: 10px; font-size: 12px; color: var(--text-sub); }
     </style>
 </head>
 <body>
@@ -274,15 +297,20 @@
     </header>
 
     <div id="active-banner">
-        <div class="banner-label">▶ BLOQUE ACTUAL</div>
+        <div class="banner-label" id="banner-label">▶ AHORA</div>
         <div class="banner-content">
             <div>
                 <div class="banner-title" id="banner-title">—</div>
                 <div class="banner-block" id="banner-block">—</div>
             </div>
-            <div id="banner-time" style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--text-muted);"></div>
+            <div class="banner-right">
+                <div class="banner-countdown" id="banner-countdown"></div>
+                <div class="banner-cd-label" id="banner-cd-label">restante</div>
+                <div id="banner-time" style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--text-muted);"></div>
+            </div>
         </div>
         <div class="progress-bar-wrap"><div class="progress-bar-fill" id="banner-progress" style="width:0%"></div></div>
+        <div class="banner-next" id="banner-next"></div>
     </div>
 
     <div class="tabs">
@@ -295,6 +323,7 @@
         <div class="toolbar-left">
             <button class="view-btn active" id="btn-table" onclick="setView('table')">☰ Tabla</button>
             <button class="view-btn" id="btn-card" onclick="setView('card')">◫ Línea de tiempo</button>
+            <select class="mi-select" id="mi-nombre" onchange="elegirNombre(this.value)" title="Resalta tus actividades"><option value="">👤 Mi nombre…</option></select>
         </div>
         <div class="stats-row" id="stats-row"></div>
     </div>
@@ -349,6 +378,18 @@
     let cargando = false;
 
     if (DEBUG) document.body.classList.add("debug");
+
+    /* ── ALMACENAMIENTO LOCAL (funciona sin internet / modo privado) ── */
+    function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+    function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+    const LS_PREFIX = "cronograma:csv:";
+    const LS_NOMBRE = "cronograma:minombre";
+    const fmtHora = ts => new Date(ts).toLocaleTimeString("es-HN", { hour: "2-digit", minute: "2-digit" });
+    const hashInicial = HASHES.includes(location.hash.slice(1));   /* si traen #segunda, se respeta */
+    let usuarioEligio = false, autoHecho = false;
+    let miNombre = lsGet(LS_NOMBRE) || "";
+    let misAreas = [];   /* áreas de esta persona en la pestaña activa */
+    let mias = [];       /* por actividad: área que coincide ("" si no) */
 
     /* ── UTILIDADES ── */
     function esc(s) {
@@ -421,17 +462,18 @@
         throw new Error("No se pudo leer la hoja. Verifica que esté compartida como \"Cualquier persona con el enlace\" y publicada en la web.");
     }
 
-    /* Carga las 3 pestañas en paralelo. Cada una se guarda por separado,
-       así cambiar de pestaña es instantáneo y una respuesta lenta nunca
-       pisa a otra pestaña. */
+    /* Carga las 3 pestañas en paralelo y guarda cada CSV en el teléfono. */
     async function actualizarTodo() {
         if (cargando) return;
         cargando = true;
         setSync("loading", "Actualizando…");
         await Promise.all(GIDS.map(async (gid, i) => {
             try {
+                if (navigator.onLine === false) throw new Error("Sin conexión a internet.");
                 const csv = await fetchCSV(gid, i);
-                cache[i] = { datos: parsearCSV(csv), ts: Date.now() };
+                const ts = Date.now();
+                cache[i] = { datos: parsearCSV(csv), ts };
+                lsSet(LS_PREFIX + i, JSON.stringify({ csv, ts }));
                 delete errores[i];
             } catch (e) {
                 errores[i] = e.message;
@@ -439,11 +481,24 @@
             }
         }));
         cargando = false;
+        actualizarSelectorNombre();
+        elegirPestañaAuto();
         renderizar();
-        const hora = new Date().toLocaleTimeString("es-HN", { hour:"2-digit", minute:"2-digit" });
-        if (Object.keys(errores).length === 0)        setSync("ok", `Sincronizado ${hora}`);
-        else if (Object.keys(cache).length > 0)       setSync("ok", `Parcial · ${hora}`);
-        else                                          setSync("ok", "Error de sync");
+        const fallos = Object.keys(errores).length;
+        if (fallos === 0)                 setSync("ok", `Sincronizado ${fmtHora(Date.now())}`);
+        else if (fallos < GIDS.length)    setSync("ok", `Parcial · ${fmtHora(Date.now())}`);
+        else {
+            const t = cache[pestañaActiva]?.ts;
+            setSync("ok", t ? `Sin conexión · datos de ${fmtHora(t)}` : "Error de sync");
+        }
+    }
+
+    function cargarDesdeAlmacenamiento() {
+        GIDS.forEach((_, i) => {
+            const raw = lsGet(LS_PREFIX + i);
+            if (!raw) return;
+            try { const { csv, ts } = JSON.parse(raw); cache[i] = { datos: parsearCSV(csv), ts }; } catch (e) {}
+        });
     }
 
     /* ── CSV ── */
@@ -467,6 +522,8 @@
         return rows;
     }
     const limpiar = s => (s || "").replace(/\r/g, "").trim();
+    /* Todo lo que empiece con // se ignora (notas para quienes editan la hoja). */
+    const quitarNotas = s => s.split("\n").filter(l => !l.trim().startsWith("//")).join("\n").trim();
 
     function parsearCSV(texto) {
         const filas = parseCSVRows(texto);
@@ -484,10 +541,11 @@
 
         /* filas limpias (sin columnas decorativas ni filas vacías), para poder mirar la fila siguiente */
         const limpias = [];
-        for (const fila of filas) {
+        for (const filaOriginal of filas) {
+            const fila = filaOriginal.map(x => quitarNotas(limpiar(x)));
             let lead = 0;
-            while (lead < offset && lead < fila.length && !limpiar(fila[lead])) lead++;
-            const fc = fila.slice(lead).map(limpiar);
+            while (lead < offset && lead < fila.length && !fila[lead]) lead++;
+            const fc = fila.slice(lead);
             if (fc.some(Boolean)) limpias.push(fc);
         }
         const esEncabezadoArea = f => !!f && ["ÁREA", "AREA", "ÁREAS"].includes((f[0] || "").toUpperCase());
@@ -577,35 +635,136 @@
         return h * 60 + min;
     }
 
-    /* ── BANNER ACTIVO ── */
+    /* ── PERSONAS / "MI NOMBRE" ── */
+    const norm = s => String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z0-9]+/g, " ").trim();
+    const SEP_PERSONAS = /\s+(?:I|Y)\s+|\s*[,\/+&]\s*/i;     /* "JOSUÉ I YEYSON" → 2 personas */
+    const personasDe = enc => String(enc || "").split(SEP_PERSONAS).map(p => p.trim()).filter(Boolean);
+
+    function mismaPersona(candidato, nombre) {
+        const a = norm(candidato), b = norm(nombre);
+        if (!a || !b) return false;
+        if (a === b) return true;
+        const sa = a.split(" "), sb = b.split(" ");
+        return (sa.length === 1 && sb[0] === sa[0]) || (sb.length === 1 && sa[0] === sb[0]);   /* "YEYSON" ↔ "YEYSON SÁNCHEZ" */
+    }
+    const esMiEncargado = enc => !!miNombre && personasDe(enc).some(p => mismaPersona(p, miNombre));
+
+    const STOP = new Set(["DE", "LA", "LAS", "LOS", "EL", "I", "Y", "PRO", "GENERAL", "MOVIMIENTO", "PRUEBA", "STREAMING"]);
+    function clavesDeArea(area) {
+        const claves = new Set();
+        String(area || "").split(/[|\/]|\s+I\s+|\s+Y\s+/i).forEach(parte => {
+            const n = norm(parte);
+            if (!n) return;
+            claves.add(n.replace(/ /g, ""));                      /* "PRO PRESENTER" → "PROPRESENTER" */
+            n.split(" ").forEach(w => { if (w.length >= 3 && !STOP.has(w)) claves.add(w); });
+        });
+        return claves;
+    }
+    /* ¿Esta actividad menciona alguna de mis áreas? (coincidencia por palabras) */
+    function coincide(a) {
+        if (!miNombre) return "";
+        const texto = " " + norm(a.actividad + " " + a.descripcion) + " ";
+        if (texto.includes(" EQUIPO COMPLETO ") || texto.includes(" TODOS ")) return "EQUIPO";
+        if (!misAreas.length) return "";
+        const tokens = new Set(texto.trim().split(" "));
+        for (const area of misAreas) for (const k of clavesDeArea(area)) if (tokens.has(k)) return area;
+        return "";
+    }
+    function calcularMias() {
+        misAreas = miNombre ? datos.staff.filter(s => esMiEncargado(s.encargado)).map(s => s.area) : [];
+        mias = datos.actividades.map(coincide);
+    }
+    function actualizarSelectorNombre() {
+        const sel = document.getElementById("mi-nombre");
+        if (!sel) return;
+        const lista = new Map();
+        Object.values(cache).forEach(e => e.datos.staff.forEach(s => personasDe(s.encargado).forEach(p => {
+            const k = norm(p); if (k && !lista.has(k)) lista.set(k, p);
+        })));
+        let nombres = [...lista.values()];
+        /* quitar nombres de pila sueltos si ya existe el nombre completo */
+        nombres = nombres.filter(n => { const k = norm(n); return k.includes(" ") || !nombres.some(o => o !== n && norm(o).startsWith(k + " ")); });
+        if (miNombre && !nombres.some(n => norm(n) === norm(miNombre))) nombres.push(miNombre);
+        nombres.sort((a, b) => a.localeCompare(b, "es"));
+        sel.innerHTML = `<option value="">👤 Mi nombre…</option>` +
+            nombres.map(n => `<option value="${esc(n)}"${norm(n) === norm(miNombre) ? " selected" : ""}>${esc(n)}</option>`).join("");
+        sel.classList.toggle("set", !!miNombre);
+    }
+    function elegirNombre(v) {
+        miNombre = v || "";
+        lsSet(LS_NOMBRE, miNombre);
+        document.getElementById("mi-nombre").classList.toggle("set", !!miNombre);
+        renderizar();
+    }
+
+    /* ── BANNER: AHORA + SIGUE + CUENTA REGRESIVA ── */
+    const fmtCuenta = seg => { seg = Math.max(0, Math.round(seg)); return Math.floor(seg / 60) + ":" + String(seg % 60).padStart(2, "0"); };
+    const fmtEn = seg => seg < 90 ? `${Math.max(1, Math.round(seg))} s` : `${Math.ceil(seg / 60)} min`;
+
+    function rangosDeActividades() {
+        return datos.actividades.map(a => {
+            const s = parseTime(a.horaInicio); let e = parseTime(a.horaFinal);
+            if (s === null || e === null) return null;
+            if (e < s) e += 720;   /* tolera errores de a.m./p.m. en la hoja */
+            return { s: s * 60, e: e * 60 };
+        });
+    }
+
     function actualizarBannerActivo() {
         const banner = document.getElementById("active-banner");
-        const { actividades } = datos;
+        const $ = id => document.getElementById(id);
         document.querySelectorAll(".row-active").forEach(r => r.classList.remove("row-active"));
         document.querySelectorAll(".card-active").forEach(r => r.classList.remove("card-active"));
+        const { actividades } = datos;
         if (!actividades.length) { banner.style.display = "none"; return; }
 
         const now = new Date();
-        const nowMin = now.getHours() * 60 + now.getMinutes();
-        let idx = -1, s = 0, e = 0;
-        for (let i = 0; i < actividades.length; i++) {
-            const a = actividades[i];
-            s = parseTime(a.horaInicio); e = parseTime(a.horaFinal);
-            if (s === null || e === null) continue;
-            if (e < s) e += 720;   /* tolera errores de a.m./p.m. en la hoja */
-            if (nowMin >= s && nowMin < e) { idx = i; break; }
-        }
-        if (idx < 0) { banner.style.display = "none"; return; }
+        const nowSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+        const rangos = rangosDeActividades();
+        const activos = [];
+        let sigS = Infinity;
+        rangos.forEach((r, i) => {
+            if (!r) return;
+            if (nowSec >= r.s && nowSec < r.e) activos.push(i);
+            else if (r.s > nowSec && r.s < sigS) sigS = r.s;
+        });
+        const sig = [];
+        if (sigS !== Infinity) rangos.forEach((r, i) => { if (r && r.s === sigS) sig.push(i); });
+        const tuya = idxs => idxs.some(i => mias[i]);
 
-        const a = actividades[idx];
-        const pct = Math.min(100, Math.round(((nowMin - s) / (e - s)) * 100));
-        document.getElementById("banner-title").textContent = a.actividad;
-        document.getElementById("banner-block").textContent = a.bloque;
-        document.getElementById("banner-time").textContent  = `${a.horaInicio} – ${a.horaFinal}`;
-        document.getElementById("banner-progress").style.width = pct + "%";
-        banner.style.display = "block";
-        document.getElementById(`row-${idx}`)?.classList.add("row-active");
-        document.getElementById(`card-${idx}`)?.classList.add("card-active");
+        if (activos.length) {
+            const a = actividades[activos[0]], r = rangos[activos[0]];
+            $("banner-label").textContent = "▶ AHORA" + (tuya(activos) ? " · ★ TU ÁREA" : "");
+            $("banner-title").textContent = a.actividad;
+            $("banner-block").textContent = a.bloque + (activos.length > 1 ? ` · ${activos.length} actividades a la vez` : "");
+            $("banner-time").textContent  = `${a.horaInicio} – ${a.horaFinal}`;
+            $("banner-countdown").textContent = fmtCuenta(r.e - nowSec);
+            $("banner-cd-label").textContent  = "restante";
+            $("banner-progress").style.width  = Math.min(100, ((nowSec - r.s) / (r.e - r.s)) * 100) + "%";
+            if (sig.length) {
+                const n = actividades[sig[0]];
+                $("banner-next").textContent = `Sigue: ${n.actividad}${sig.length > 1 ? ` (+${sig.length - 1})` : ""} · ${n.horaInicio} · en ${fmtEn(sigS - nowSec)}${tuya(sig) ? " ★" : ""}`;
+                $("banner-next").style.display = "";
+            } else $("banner-next").style.display = "none";
+            activos.forEach(i => {
+                document.getElementById(`row-${i}`)?.classList.add("row-active");
+                document.getElementById(`card-${i}`)?.classList.add("card-active");
+            });
+            banner.style.display = "block";
+        } else if (sig.length && sigS - nowSec <= 1800) {
+            const n = actividades[sig[0]];
+            $("banner-label").textContent = "⏭ SIGUE" + (tuya(sig) ? " · ★ TU ÁREA" : "");
+            $("banner-title").textContent = n.actividad;
+            $("banner-block").textContent = n.bloque;
+            $("banner-time").textContent  = `${n.horaInicio} – ${n.horaFinal}`;
+            $("banner-countdown").textContent = fmtCuenta(sigS - nowSec);
+            $("banner-cd-label").textContent  = "para iniciar";
+            $("banner-progress").style.width  = "0%";
+            $("banner-next").style.display = "none";
+            banner.style.display = "block";
+        } else {
+            banner.style.display = "none";
+        }
     }
 
     /* ── STATS ── */
@@ -613,8 +772,14 @@
         const { actividades, staff } = datos;
         const bloques = new Set(actividades.map(a => a.bloque)).size;
         const conAviso = actividades.filter(a => a.aviso).length;
+        let mi = "";
+        if (miNombre) {
+            mi = misAreas.length
+                ? `<div class="stat-chip" style="border-color:rgba(45,212,191,.4);color:var(--c-mine)">★ ${esc(misAreas.join(" · "))}</div>`
+                : `<div class="stat-chip" style="color:var(--text-muted)">Sin área tuya en esta reunión</div>`;
+        }
         document.getElementById("stats-row").innerHTML =
-            `<div class="stat-chip"><span>${actividades.length}</span> actividades</div>
+            `${mi}<div class="stat-chip"><span>${actividades.length}</span> actividades</div>
              <div class="stat-chip"><span>${bloques}</span> bloques</div>
              <div class="stat-chip"><span>${staff.length}</span> encargados</div>
              ${conAviso ? `<div class="stat-chip" style="border-color:rgba(251,191,36,.3);color:var(--c-aviso)"><span>${conAviso}</span> avisos</div>` : ""}`;
@@ -628,13 +793,14 @@
             html = `<tr><td colspan="7" class="state-cell"><div class="state-icon">📭</div><div class="state-msg">No se encontraron datos.<br><small style="font-size:11px;">Agrega <b>?debug</b> al final del link para ver la consola.</small></div></td></tr>`;
         }
         actividades.forEach((a, i) => {
+            const mia = mias[i] ? `<span class="mine-badge">★ ${esc(mias[i])}</span>` : "";
             html += `
-            <tr id="row-${i}">
+            <tr id="row-${i}" class="${mias[i] ? "row-mine" : ""}">
                 <td class="time-cell">${esc(a.horaInicio)}</td>
                 <td><span class="duration-chip">${esc(a.duracion) || "—"}</span></td>
                 <td class="time-cell" style="color:var(--text-sub)">${esc(a.horaFinal)}</td>
                 <td><span class="bloque-pill ${clasePill(a.bloque)}"><span class="bloque-dot"></span>${esc(a.bloque)}</span></td>
-                <td class="actividad-cell">${esc(a.actividad)}</td>
+                <td class="actividad-cell">${esc(a.actividad)}${mia}</td>
                 <td class="desc-cell">${esc(a.descripcion)}</td>
                 <td>${a.aviso ? `<span class="aviso-badge">⚠ ${esc(a.aviso)}</span>` : `<span style="color:var(--border)">—</span>`}</td>
             </tr>`;
@@ -648,7 +814,7 @@
                     if (g) html += `<tr class="staff-section-header"><td colspan="7"><span class="staff-section-label">${esc(g)}</span></td></tr>`;
                 }
                 html += `
-                <tr>
+                <tr class="${esMiEncargado(s.encargado) ? "staff-mine" : ""}">
                     <td colspan="3" style="color:var(--text-muted);font-size:11px;font-family:'JetBrains Mono',monospace;">STAFF</td>
                     <td style="font-weight:700;color:var(--text-main)">${esc(s.area)}</td>
                     <td class="staff-name-cell">${esc(s.encargado)}</td>
@@ -670,14 +836,14 @@
                         <span style="font-size:10px;white-space:normal;max-width:100px;line-height:1.3">${esc(a.aviso)}</span>
                    </span></div>` : "";
             html += `
-            <div class="card ${claseCard(a.bloque)}" id="card-${i}">
+            <div class="card ${claseCard(a.bloque)}${mias[i] ? " card-mine" : ""}" id="card-${i}">
                 <div class="card-time">
                     <div class="card-time-start">${esc(a.horaInicio) || "—"}</div>
                     <div class="card-time-dur">${esc(a.duracion)}</div>
                     ${a.horaFinal ? `<div class="card-time-end">${esc(a.horaFinal)}</div>` : ""}
                 </div>
                 <div class="card-body">
-                    <div class="card-header-row"><span class="bloque-pill ${clasePill(a.bloque)}"><span class="bloque-dot"></span>${esc(a.bloque)}</span></div>
+                    <div class="card-header-row"><span class="bloque-pill ${clasePill(a.bloque)}"><span class="bloque-dot"></span>${esc(a.bloque)}</span>${mias[i] ? `<span class="mine-badge" style="margin-left:0">★ ${esc(mias[i])}</span>` : ""}</div>
                     <div class="card-actividad">${esc(a.actividad)}</div>
                     ${a.descripcion ? `<div class="card-desc">${esc(a.descripcion)}</div>` : ""}
                     ${a.aviso ? `<div class="card-aviso-mobile">⚠ ${esc(a.aviso)}</div>` : ""}
@@ -697,7 +863,7 @@
                     staffHtml += `<div class="staff-section-title">▸ ${esc(g || "EQUIPO TÉCNICO / ENCARGADOS")}</div><div class="staff-grid">`;
                 }
                 staffHtml += `
-                <div class="staff-card">
+                <div class="staff-card${esMiEncargado(s.encargado) ? " staff-mine" : ""}">
                     <div class="staff-card-area">${esc(s.area)}</div>
                     <div class="staff-card-name">${esc(s.encargado)}</div>
                     ${s.notas ? `<div class="staff-card-notes">${esc(s.notas)}</div>` : ""}
@@ -723,6 +889,7 @@
             return;
         }
         datos = entrada.datos;
+        calcularMias();
         renderStats(); renderTable(); renderCards(); actualizarBannerActivo();
     }
 
@@ -740,21 +907,65 @@
         document.querySelectorAll(".tab-btn").forEach((b, i) => b.classList.toggle("active", i === pestañaActiva));
     }
     function cambiarPestaña(index) {
+        usuarioEligio = true; autoHecho = true;
         pestañaActiva = index;
         history.replaceState(null, "", "#" + HASHES[index]);
         marcarTab();
         renderizar();   /* instantáneo si ya está en caché */
     }
 
+    /* Domingos: abre sola la reunión que está en curso (o la próxima).
+       No actúa si el link trae #segunda, #explosion…, ni si ya elegiste una pestaña.
+       Para probarlo otro día: agrega ?auto al link. */
+    function rangoDeTab(i) {
+        const e = cache[i];
+        if (!e || !e.datos.actividades.length) return null;
+        let s = Infinity, f = -Infinity;
+        for (const a of e.datos.actividades) {
+            const x = parseTime(a.horaInicio); let y = parseTime(a.horaFinal);
+            if (x === null || y === null) continue;
+            if (y < x) y += 720;
+            s = Math.min(s, x); f = Math.max(f, y);
+        }
+        return s === Infinity ? null : { s, f };
+    }
+    function elegirPestañaAuto() {
+        if (autoHecho) return;
+        if (hashInicial || usuarioEligio) { autoHecho = true; return; }
+        const ahoraD = new Date();
+        if (ahoraD.getDay() !== 0 && !new URLSearchParams(location.search).has("auto")) { autoHecho = true; return; }
+        const rangos = GIDS.map((_, i) => rangoDeTab(i));
+        if (rangos.some(r => !r)) return;   /* espera a tener las 3 pestañas */
+        autoHecho = true;
+        const ahora = ahoraD.getHours() * 60 + ahoraD.getMinutes();
+        let mejor = -1, mejorS = -1;
+        rangos.forEach((r, i) => { if (ahora >= r.s - 15 && ahora <= r.f + 5 && r.s > mejorS) { mejor = i; mejorS = r.s; } });
+        if (mejor < 0) {
+            let pS = Infinity;
+            rangos.forEach((r, i) => { if (r.s > ahora && r.s < pS) { mejor = i; pS = r.s; } });
+            if (mejor < 0) mejor = 0;
+        }
+        if (mejor !== pestañaActiva) { pestañaActiva = mejor; marcarTab(); renderizar(); }
+    }
+
     /* ── INIT ── */
     window.onload = () => {
         marcarTab();
         setView(vistaActual);
+        cargarDesdeAlmacenamiento();      /* muestra al instante lo último que se vio */
+        actualizarSelectorNombre();
+        elegirPestañaAuto();
         renderizar();
+        const t = cache[pestañaActiva]?.ts;
+        if (t) setSync("ok", `Datos guardados · ${fmtHora(t)}`);
         actualizarTodo();
         setInterval(actualizarTodo, POLL_INTERVAL);
-        setInterval(actualizarBannerActivo, 30000);
+        setInterval(actualizarBannerActivo, 1000);   /* cuenta regresiva */
         document.addEventListener("visibilitychange", () => { if (!document.hidden) actualizarTodo(); });
+        window.addEventListener("online", actualizarTodo);
+        if ("serviceWorker" in navigator && location.protocol === "https:") {
+            navigator.serviceWorker.register("sw.js").catch(() => {});   /* permite abrir la página sin internet */
+        }
     };
 
 </script>
