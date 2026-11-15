@@ -242,6 +242,15 @@
             .card-aviso{display:none;}
             .header-logo{width:40px;height:40px;}
         }
+
+        /* ── AJUSTES ── */
+        .table-wrap { overflow-x: auto; }
+        table { min-width: 820px; }
+        .card-desc { white-space: pre-line; }
+        .card-aviso-mobile { display: none; margin-top: 4px; font-size: 11px; font-weight: 700; color: var(--c-aviso); }
+        .console-wrap { display: none; }
+        body.debug .console-wrap { display: block; }
+        @media(max-width:700px){ .card-aviso-mobile { display: block; } }
     </style>
 </head>
 <body>
@@ -325,254 +334,213 @@
 
 <script>
     /* ── CONFIG ── */
-    /* Usamos dos formatos de URL: el /pub (para quien la publicó) y /export (más abierto).
-       El fetch intenta ambos formatos a través de proxies CORS. */
     const SHEET_ID_PUBLICADO = "2PACX-1vTHX3umAF4N-HNU7qVBBj7TF6mHZTz9VIzNoAnyd1-kRL6J1Ig1zAdNnmMg9sb9dI7nS9N9XEc82wGb";
     const SHEET_ID_DIRECTO   = "13GqRrgWTb4inoj1o_HSwPacbHDBCBtkeJ9f5Zx6bN7U";
-    const GIDS = { 0:"1584889573", 1:"1151618335", 2:"1931811566" };
-    const POLL_INTERVAL = 15000;
+    const GIDS     = ["1584889573", "1151618335", "1931811566"];
+    const HASHES   = ["primera", "segunda", "explosion"];   /* link directo: ...#segunda */
+    const POLL_INTERVAL = 30000;
+    const DEBUG = new URLSearchParams(location.search).has("debug");   /* ...?debug muestra la consola */
 
-    let pestañaActiva = 0;
-    let vistaActual = "table";
+    let pestañaActiva = Math.max(0, HASHES.indexOf(location.hash.slice(1)));
+    let vistaActual   = window.innerWidth <= 700 ? "card" : "table";
     let datos = { actividades: [], staff: [] };
+    const cache   = {};   /* índice de pestaña → { datos, ts } */
+    const errores = {};   /* índice de pestaña → mensaje */
+    let cargando = false;
 
-    /* ── RELOJ ── */
+    if (DEBUG) document.body.classList.add("debug");
+
+    /* ── UTILIDADES ── */
+    function esc(s) {
+        return String(s ?? "").replace(/[&<>"']/g, ch => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[ch]));
+    }
     function tickClock() {
         document.getElementById("live-clock").textContent =
             new Date().toLocaleTimeString("es-HN", { hour:"2-digit", minute:"2-digit", second:"2-digit" });
     }
     setInterval(tickClock, 1000); tickClock();
 
-    /* ── LOG ── */
     function log(msg, tipo = "ok") {
+        if (!DEBUG) return;
         const box = document.getElementById("debug-log");
         const c = { ok:"#4ade80", error:"#f87171", warn:"#fbbf24", info:"#60a5fa" }[tipo] || "#4ade80";
-        box.innerHTML += `<br><span style="color:${c}">[${new Date().toLocaleTimeString("es-HN")}] ${msg}</span>`;
+        box.innerHTML += `<br><span style="color:${c}">[${new Date().toLocaleTimeString("es-HN")}] ${esc(msg)}</span>`;
         box.scrollTop = box.scrollHeight;
     }
-
-    /* ── FETCH ──────────────────────────────────────────────────────────────
-       ESTRATEGIA (de más confiable a menos):
-
-       1. /gviz directo — Google envía CORS headers en este endpoint cuando
-          la hoja es pública. No necesita proxy. Es la opción más rápida.
-
-       2. /pub a través de proxies — la URL larga "PACX" que usabas.
-          Algunos proxies la aceptan, otros la rechazan (401/404).
-          Intentamos 3 proxies distintos.
-
-       3. /pub directo — funciona solo en desarrollo local, falla en
-          GitHub Pages por CORS, pero vale intentarlo como último recurso.
-    ──────────────────────────────────────────────────────────────────────── */
-    function esCSVValido(t) {
-        return t && t.length > 20 && !t.trimStart().startsWith("<");
+    function setSync(estado, texto) {
+        document.getElementById("sync-icon").classList.toggle("spinning", estado === "loading");
+        document.getElementById("sync-label").textContent = texto;
     }
 
-    async function intentarFetch(url, timeoutMs = 7000) {
-        const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+    /* ── FETCH ──
+       Orden: gviz (más fresco) → /pub (publicado) → un proxy como último recurso.
+       Cada intento tiene timeout corto para que una falla no bloquee todo. */
+    function esCSVValido(t) { return t && t.length > 20 && !t.trimStart().startsWith("<"); }
+
+    async function intentarFetch(url, timeoutMs = 6000) {
+        const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs), cache: "no-store" });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const texto = await res.text();
-        if (!esCSVValido(texto)) throw new Error("Respuesta no es CSV");
+        if (!esCSVValido(texto)) throw new Error("la respuesta no es CSV");
         return texto;
     }
 
-    async function fetchConProxy(gid) {
+    async function fetchCSV(gid) {
         const cb = Date.now();
-
-        /* ── INTENTO 1: /gviz directo (CORS nativo de Google) ── */
-        const urlGviz = `https://docs.google.com/spreadsheets/d/${SHEET_ID_DIRECTO}/gviz/tq?tqx=out:csv&gid=${gid}&cb=${cb}`;
-        try {
-            const texto = await intentarFetch(urlGviz);
-            log(`OK (gviz directo) — ${texto.split(/\r?\n/).length} líneas`, "ok");
-            return texto;
-        } catch(e) {
-            log(`gviz directo falló: ${e.message}`, "warn");
-        }
-
-        /* ── INTENTO 2: /pub a través de proxies CORS ── */
         const urlPub = `https://docs.google.com/spreadsheets/d/e/${SHEET_ID_PUBLICADO}/pub?output=csv&gid=${gid}&single=true&cb=${cb}`;
-        const proxies = [
-            `https://corsproxy.io/?${encodeURIComponent(urlPub)}`,
-            `https://api.allorigins.win/raw?url=${encodeURIComponent(urlPub)}`,
-            `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(urlPub)}`,
-            `https://thingproxy.freeboard.io/fetch/${urlPub}`,
+        const intentos = [
+            ["gviz", `https://docs.google.com/spreadsheets/d/${SHEET_ID_DIRECTO}/gviz/tq?tqx=out:csv&gid=${gid}&cb=${cb}`],
+            ["pub",  urlPub],
+            ["proxy", `https://api.allorigins.win/raw?url=${encodeURIComponent(urlPub)}`],
         ];
-        for (let i = 0; i < proxies.length; i++) {
+        for (const [nombre, url] of intentos) {
             try {
-                const texto = await intentarFetch(proxies[i]);
-                log(`OK (proxy[${i}]) — ${texto.split(/\r?\n/).length} líneas`, "ok");
+                const texto = await intentarFetch(url);
+                log(`gid ${gid}: OK vía ${nombre}`, "ok");
                 return texto;
-            } catch(e) {
-                log(`proxy[${i}] falló: ${e.message}`, "warn");
+            } catch (e) {
+                log(`gid ${gid}: ${nombre} falló (${e.message})`, "warn");
             }
         }
-
-        /* ── INTENTO 3: /pub directo (solo funciona en local) ── */
-        try {
-            const texto = await intentarFetch(urlPub);
-            log(`OK (directo) — ${texto.split(/\r?\n/).length} líneas`, "ok");
-            return texto;
-        } catch(e) {
-            log(`directo falló: ${e.message}`, "warn");
-        }
-
-        throw new Error("No se pudo conectar. Verifica que la hoja esté publicada en Google Sheets: Archivo → Compartir → Publicar en la web.");
+        throw new Error("No se pudo leer la hoja. Verifica que esté publicada (Archivo → Compartir → Publicar en la web) y compartida como \"cualquiera con el enlace\".");
     }
 
-    async function obtenerDatos() {
-        const icon = document.getElementById("sync-icon");
-        const label = document.getElementById("sync-label");
-        icon.classList.add("spinning"); label.textContent = "Actualizando…";
-        try {
-            log(`Solicitando GID ${GIDS[pestañaActiva]}…`, "info");
-            const csv = await fetchConProxy(GIDS[pestañaActiva]);
-            datos = parsearCSV(csv);
-            renderizar();
-            log(`Listo — ${datos.actividades.length} actividades · ${datos.staff.length} encargados`, "ok");
-            label.textContent = "Sincronizado ✓";
-        } catch(e) {
-            log(`Error: ${e.message}`, "error");
-            label.textContent = "Error de sync";
-            document.getElementById("cronograma-body").innerHTML =
-                `<tr><td colspan="7" class="state-cell">
-                    <div class="state-icon">⚠️</div>
-                    <div class="state-msg" style="color:#f87171;max-width:500px;margin:0 auto;">${e.message}</div>
-                 </td></tr>`;
-        } finally {
-            icon.classList.remove("spinning");
-        }
+    /* Carga las 3 pestañas en paralelo. Cada una se guarda por separado,
+       así cambiar de pestaña es instantáneo y una respuesta lenta nunca
+       pisa a otra pestaña. */
+    async function actualizarTodo() {
+        if (cargando) return;
+        cargando = true;
+        setSync("loading", "Actualizando…");
+        await Promise.all(GIDS.map(async (gid, i) => {
+            try {
+                const csv = await fetchCSV(gid);
+                cache[i] = { datos: parsearCSV(csv), ts: Date.now() };
+                delete errores[i];
+            } catch (e) {
+                errores[i] = e.message;
+                log(`Pestaña ${i}: ${e.message}`, "error");
+            }
+        }));
+        cargando = false;
+        renderizar();
+        const hora = new Date().toLocaleTimeString("es-HN", { hour:"2-digit", minute:"2-digit" });
+        if (Object.keys(errores).length === 0)        setSync("ok", `Sincronizado ${hora}`);
+        else if (Object.keys(cache).length > 0)       setSync("ok", `Parcial · ${hora}`);
+        else                                          setSync("ok", "Error de sync");
     }
 
-    /* ── PARSE CSV ──
-       Estructura de la hoja (basada en la captura):
-         Col A(0): HORA INICIO  Col B(1): DURACIÓN  Col C(2): HORA FINAL
-         Col D(3): ACTIVIDAD    Col E(4): DESCRIPCIÓN
-         Col F(5): vacía/extra  Col G(6): AVISO (texto rojo en la hoja)
-
-       La hoja también tiene filas de CABECERA de sección (solo col A o col B con el nombre
-       del bloque, el resto vacías) y luego una sección de ENCARGADOS al final.
-    ── */
-    /* limpiar celda CSV */
-    function limpiarCelda(s) { return (s || "").replace(/^[,;"\s]+|[,;"\s]+$/g, "").trim(); }
+    /* ── CSV ── */
+    /* Parser real: respeta comillas, comas y SALTOS DE LÍNEA dentro de una celda
+       (p. ej. la lista de anuncios en una sola celda). */
+    function parseCSVRows(text) {
+        const rows = []; let row = [], cell = "", q = false;
+        for (let i = 0; i < text.length; i++) {
+            const ch = text[i];
+            if (q) {
+                if (ch === '"') { if (text[i+1] === '"') { cell += '"'; i++; } else q = false; }
+                else cell += ch;
+            } else if (ch === '"') q = true;
+            else if (ch === ",") { row.push(cell); cell = ""; }
+            else if (ch === "\n" || ch === "\r") {
+                if (ch === "\r" && text[i+1] === "\n") i++;
+                row.push(cell); cell = ""; rows.push(row); row = [];
+            } else cell += ch;
+        }
+        if (cell !== "" || row.length) { row.push(cell); rows.push(row); }
+        return rows;
+    }
+    const limpiar = s => (s || "").replace(/\r/g, "").trim();
 
     function parsearCSV(texto) {
-        const lineas = texto.split(/\r?\n/);
-        const actividades = [];
-        const staff = [];
+        const filas = parseCSVRows(texto);
+        const actividades = [], staff = [];
         let bloqueActual = "PRODUCCIÓN";
-        let modoStaff = false;
-        let avisosPendientes = [];   /* avisos de col G que esperan una actividad */
+        let modoStaff = false, grupoStaff = "";
+        let avisosPendientes = [];
 
-        /* Detectar separador */
-        const muestra = lineas.slice(0, 12).join("");
-        const nSemi  = (muestra.match(/;/g)  || []).length;
-        const nComa  = (muestra.match(/,/g)  || []).length;
-        const sep = nSemi > nComa ? ";" : ",";
-        log(`Separador: "${sep}"`, "info");
+        /* Columna donde empieza la tabla = donde aparece "HORA INICIO" */
+        let offset = 0;
+        for (const f of filas) {
+            const k = f.findIndex(x => limpiar(x).toUpperCase() === "HORA INICIO");
+            if (k >= 0) { offset = k; break; }
+        }
 
-        const splitLine = (l) =>
-            l.split(new RegExp(`${sep.replace(";","\\;")}(?=(?:[^"]*"[^"]*")*[^"]*$)`))
-             .map(c => c.replace(/^"|"$/g, '').trim());
+        for (const fila of filas) {
+            /* quitar columnas decorativas vacías a la izquierda (máx. offset) */
+            let lead = 0;
+            while (lead < offset && lead < fila.length && !limpiar(fila[lead])) lead++;
+            const c = fila.slice(lead).map(limpiar);
+            if (!c.some(Boolean)) continue;
 
-        for (let i = 0; i < lineas.length; i++) {
-            if (!lineas[i].trim()) continue;
-            let c = splitLine(lineas[i]);
-
-            /* Descartar prefijos vacíos (col A decorativa) */
-            while (c.length > 1 && limpiarCelda(c[0]) === "") c.shift();
-            if (!c.length || (c.length === 1 && !limpiarCelda(c[0]))) continue;
-
-            const c0  = limpiarCelda(c[0]);
-            const c0U = c0.toUpperCase();
-
+            const c0U = c[0].toUpperCase();
             if (c0U.includes("CRONOGRAMA GENERAL")) continue;
             if (c0U === "HORA INICIO" || c0U === "HORA") continue;
 
-            /* ── SECCIÓN ENCARGADOS ── */
-            if (c0U === "ÁREA" || c0U === "AREA" || c0U === "ÁREAS" ||
-                (limpiarCelda(c[1])).toUpperCase() === "ENCARGADOS") {
+            /* ── ENCARGADOS ── */
+            if (c0U === "ÁREA" || c0U === "AREA" || c0U === "ÁREAS" || (c[1] || "").toUpperCase() === "ENCARGADOS") {
                 modoStaff = true;
-                log(`Sección STAFF en línea ${i+1}`, "info");
                 continue;
             }
-
-            /* ── MODO STAFF ── */
             if (modoStaff) {
-                const area      = limpiarCelda(c[0]);
-                const encargado = limpiarCelda(c[1]);
-                const notas     = c.slice(2).map(limpiarCelda).filter(Boolean).join(" · ");
+                const area = c[0], encargado = c[1] || "";
+                if (area && !encargado && !c.slice(2).some(Boolean)) { grupoStaff = area; continue; } /* subtítulo, p. ej. TRANSMISIÓN DE PRUEBA */
                 if (encargado) {
-                    /* Si área vacía: celda fusionada en Sheets → heredar última área */
-                    const areaFinal = area || (staff.length > 0 ? staff[staff.length-1].area : "");
-                    staff.push({ area: areaFinal, encargado, notas });
+                    const areaFinal = area || (staff.length ? staff[staff.length-1].area : "");
+                    staff.push({ grupo: grupoStaff, area: areaFinal, encargado, notas: c.slice(2).filter(Boolean).join(" · ") });
                 }
                 continue;
             }
 
-            /* Aviso de col G o col F en CUALQUIER fila */
-            const avisoRaw = limpiarCelda(c[6]) || limpiarCelda(c[5]) || "";
+            const avisoRaw = c[6] || c[5] || "";
 
-            /* ── FILA DE BLOQUE (solo col 0 tiene texto) ── */
-            const restoVacio = c.slice(1).every(x => !limpiarCelda(x));
-            if (c0 && restoVacio) {
+            /* ── FILA DE BLOQUE (solo la primera celda tiene texto) ── */
+            if (c[0] && c.slice(1).every(x => !x)) {
                 if (avisoRaw) avisosPendientes.push(avisoRaw);
-                bloqueActual = c0;
-                log(`Bloque: "${bloqueActual}"`, "info");
+                bloqueActual = c[0];
                 continue;
             }
 
-            const horaInicio  = limpiarCelda(c[0]);
-            const duracion    = limpiarCelda(c[1]);
-            const horaFinal   = limpiarCelda(c[2]);
-            const actividad   = limpiarCelda(c[3]);
-            const descripcion = limpiarCelda(c[4]);
-
-            /* Fila sin actividad → guardar aviso si lo hay */
+            const [horaInicio = "", duracion = "", horaFinal = "", actividad = "", descripcion = ""] = c;
             if (!actividad || actividad === bloqueActual) {
                 if (avisoRaw) avisosPendientes.push(avisoRaw);
                 continue;
             }
 
-            /* Herencia de hora para celdas fusionadas verticalmente:
-               si hora vacía, usar la última registrada (bloque cierre tiene múltiples
-               actividades bajo una sola celda de hora en la hoja). */
-            const ultimaAct = actividades.length > 0 ? actividades[actividades.length-1] : null;
-            const horaInicioFinal = horaInicio || (ultimaAct ? ultimaAct.horaInicio : "");
-            const duracionFinal   = duracion   || (ultimaAct ? ultimaAct.duracion   : "");
-            const horaFinalFinal  = horaFinal  || (ultimaAct ? ultimaAct.horaFinal  : "");
-
-            /* Acumular aviso de esta fila + pendientes, deduplicar */
+            /* celdas combinadas: heredar la hora de la actividad anterior */
+            const prev = actividades[actividades.length - 1];
             if (avisoRaw) avisosPendientes.push(avisoRaw);
-            const avisoFinal = [...new Set(avisosPendientes)].join(" · ");
+            actividades.push({
+                horaInicio: horaInicio || (prev ? prev.horaInicio : ""),
+                duracion:   duracion   || (prev ? prev.duracion   : ""),
+                horaFinal:  horaFinal  || (prev ? prev.horaFinal  : ""),
+                bloque: bloqueActual, actividad, descripcion,
+                aviso: [...new Set(avisosPendientes)].join(" · "),
+            });
             avisosPendientes = [];
-
-            actividades.push({ horaInicio: horaInicioFinal, duracion: duracionFinal, horaFinal: horaFinalFinal, bloque: bloqueActual, actividad, descripcion, aviso: avisoFinal });
         }
-
         return { actividades, staff };
     }
 
     /* ── HELPERS ── */
     function clasePill(bloque) {
         const b = bloque.toUpperCase();
-        if (b.includes("PREVIO"))                                        return "pill-previo";
-        if (b.includes("TRANSMIS") || b.includes("INICIO") || b.includes("TIMER")) return "pill-transmision";
-        if (b.includes("ALABANZA") || b.includes("ADORAC"))             return "pill-alabanza";
-        if (b.includes("MENSAJE")  || b.includes("BIENVENIDA") ||
-            b.includes("PALABRA")  || b.includes("PREDICAC"))           return "pill-mensaje";
-        if (b.includes("MINISTR")  || b.includes("ALTAR"))              return "pill-ministracion";
+        if (b.includes("PREVIO"))                                                   return "pill-previo";
+        if (b.includes("TRANSMIS") || b.includes("INICIO") || b.includes("TIMER"))  return "pill-transmision";
+        if (b.includes("ALABANZA") || b.includes("ADORAC"))                         return "pill-alabanza";
+        if (b.includes("MENSAJE") || b.includes("BIENVENIDA") || b.includes("PALABRA") || b.includes("PREDICAC")) return "pill-mensaje";
+        if (b.includes("MINISTR") || b.includes("ALTAR"))                           return "pill-ministracion";
         return "pill-cierre";
     }
-    function claseCard(b) { return clasePill(b).replace("pill-","card-"); }
+    const claseCard = b => clasePill(b).replace("pill-", "card-");
 
-    /* ── PARSE HORA → minutos ── */
     function parseTime(t) {
         if (!t) return null;
-        const m = t.match(/(\d{1,2})[:\.](\d{2})\s*(am|pm|a\.m\.|p\.m\.)?/i);
+        const m = t.match(/(\d{1,2})[:\.](\d{2})\s*(a\.?\s?m\.?|p\.?\s?m\.?)?/i);
         if (!m) return null;
         let h = parseInt(m[1]), min = parseInt(m[2]);
         if (m[3]) {
-            const ap = m[3].toLowerCase().replace(/\./g,"");
+            const ap = m[3].toLowerCase().replace(/[\.\s]/g, "");
             if (ap === "pm" && h !== 12) h += 12;
             if (ap === "am" && h === 12) h = 0;
         }
@@ -583,38 +551,37 @@
     function actualizarBannerActivo() {
         const banner = document.getElementById("active-banner");
         const { actividades } = datos;
+        document.querySelectorAll(".row-active").forEach(r => r.classList.remove("row-active"));
+        document.querySelectorAll(".card-active").forEach(r => r.classList.remove("card-active"));
         if (!actividades.length) { banner.style.display = "none"; return; }
 
         const now = new Date();
         const nowMin = now.getHours() * 60 + now.getMinutes();
-        let activo = null;
-        for (const a of actividades) {
-            const s = parseTime(a.horaInicio), e = parseTime(a.horaFinal);
-            if (s !== null && e !== null && nowMin >= s && nowMin < e) { activo = { ...a, s, e }; break; }
+        let idx = -1, s = 0, e = 0;
+        for (let i = 0; i < actividades.length; i++) {
+            const a = actividades[i];
+            s = parseTime(a.horaInicio); e = parseTime(a.horaFinal);
+            if (s === null || e === null) continue;
+            if (e < s) e += 720;   /* tolera errores de a.m./p.m. en la hoja */
+            if (nowMin >= s && nowMin < e) { idx = i; break; }
         }
+        if (idx < 0) { banner.style.display = "none"; return; }
 
-        document.querySelectorAll(".row-active").forEach(r => r.classList.remove("row-active"));
-        document.querySelectorAll(".card-active").forEach(c => c.classList.remove("card-active"));
-
-        if (activo) {
-            const pct = Math.min(100, Math.round(((nowMin - activo.s) / (activo.e - activo.s)) * 100));
-            document.getElementById("banner-title").textContent = activo.actividad;
-            document.getElementById("banner-block").textContent = activo.bloque;
-            document.getElementById("banner-time").textContent  = `${activo.horaInicio} – ${activo.horaFinal}`;
-            document.getElementById("banner-progress").style.width = pct + "%";
-            banner.style.display = "block";
-            const idx = actividades.findIndex(a => a.actividad === activo.actividad && a.horaInicio === activo.horaInicio);
-            document.getElementById(`row-${idx}`)?.classList.add("row-active");
-            document.getElementById(`card-${idx}`)?.classList.add("card-active");
-        } else {
-            banner.style.display = "none";
-        }
+        const a = actividades[idx];
+        const pct = Math.min(100, Math.round(((nowMin - s) / (e - s)) * 100));
+        document.getElementById("banner-title").textContent = a.actividad;
+        document.getElementById("banner-block").textContent = a.bloque;
+        document.getElementById("banner-time").textContent  = `${a.horaInicio} – ${a.horaFinal}`;
+        document.getElementById("banner-progress").style.width = pct + "%";
+        banner.style.display = "block";
+        document.getElementById(`row-${idx}`)?.classList.add("row-active");
+        document.getElementById(`card-${idx}`)?.classList.add("card-active");
     }
 
     /* ── STATS ── */
     function renderStats() {
         const { actividades, staff } = datos;
-        const bloques = [...new Set(actividades.map(a => a.bloque))].length;
+        const bloques = new Set(actividades.map(a => a.bloque)).size;
         const conAviso = actividades.filter(a => a.aviso).length;
         document.getElementById("stats-row").innerHTML =
             `<div class="stat-chip"><span>${actividades.length}</span> actividades</div>
@@ -623,97 +590,87 @@
              ${conAviso ? `<div class="stat-chip" style="border-color:rgba(251,191,36,.3);color:var(--c-aviso)"><span>${conAviso}</span> avisos</div>` : ""}`;
     }
 
-    /* ── RENDER TABLE ── */
+    /* ── RENDER TABLA ── */
     function renderTable() {
         const { actividades, staff } = datos;
         let html = "";
-
         if (!actividades.length) {
-            html = `<tr><td colspan="7" class="state-cell"><div class="state-icon">📭</div><div class="state-msg">No se encontraron datos estructurados.<br><small style="color:var(--text-muted);font-size:11px;">Revisa la consola para detalles del parsing.</small></div></td></tr>`;
-        } else {
-            for (let i = 0; i < actividades.length; i++) {
-                const a = actividades[i];
-                const pill = clasePill(a.bloque);
-                const avisoHTML = a.aviso
-                    ? `<span class="aviso-badge">⚠ ${a.aviso}</span>`
-                    : `<span style="color:var(--border)">—</span>`;
-                html += `
-                <tr id="row-${i}">
-                    <td class="time-cell">${a.horaInicio}</td>
-                    <td><span class="duration-chip">${a.duracion || '—'}</span></td>
-                    <td class="time-cell" style="color:var(--text-sub)">${a.horaFinal}</td>
-                    <td><span class="bloque-pill ${pill}"><span class="bloque-dot"></span>${a.bloque}</span></td>
-                    <td class="actividad-cell">${a.actividad}</td>
-                    <td class="desc-cell">${a.descripcion}</td>
-                    <td>${avisoHTML}</td>
-                </tr>`;
-            }
+            html = `<tr><td colspan="7" class="state-cell"><div class="state-icon">📭</div><div class="state-msg">No se encontraron datos.<br><small style="font-size:11px;">Agrega <b>?debug</b> al final del link para ver la consola.</small></div></td></tr>`;
         }
-
+        actividades.forEach((a, i) => {
+            html += `
+            <tr id="row-${i}">
+                <td class="time-cell">${esc(a.horaInicio)}</td>
+                <td><span class="duration-chip">${esc(a.duracion) || "—"}</span></td>
+                <td class="time-cell" style="color:var(--text-sub)">${esc(a.horaFinal)}</td>
+                <td><span class="bloque-pill ${clasePill(a.bloque)}"><span class="bloque-dot"></span>${esc(a.bloque)}</span></td>
+                <td class="actividad-cell">${esc(a.actividad)}</td>
+                <td class="desc-cell">${esc(a.descripcion)}</td>
+                <td>${a.aviso ? `<span class="aviso-badge">⚠ ${esc(a.aviso)}</span>` : `<span style="color:var(--border)">—</span>`}</td>
+            </tr>`;
+        });
         if (staff.length) {
             html += `<tr class="staff-section-header"><td colspan="7"><span class="staff-section-label">▸ EQUIPO TÉCNICO / ENCARGADOS</span></td></tr>`;
+            let g = "";
             for (const s of staff) {
+                if (s.grupo !== g) {
+                    g = s.grupo;
+                    if (g) html += `<tr class="staff-section-header"><td colspan="7"><span class="staff-section-label">${esc(g)}</span></td></tr>`;
+                }
                 html += `
                 <tr>
                     <td colspan="3" style="color:var(--text-muted);font-size:11px;font-family:'JetBrains Mono',monospace;">STAFF</td>
-                    <td style="font-weight:700;color:var(--text-main)">${s.area}</td>
-                    <td class="staff-name-cell">${s.encargado}</td>
-                    <td class="desc-cell" colspan="2">${s.notas}</td>
+                    <td style="font-weight:700;color:var(--text-main)">${esc(s.area)}</td>
+                    <td class="staff-name-cell">${esc(s.encargado)}</td>
+                    <td class="desc-cell" colspan="2">${esc(s.notas)}</td>
                 </tr>`;
             }
         }
-
         document.getElementById("cronograma-body").innerHTML = html;
     }
 
-    /* ── RENDER CARDS ── */
+    /* ── RENDER TARJETAS ── */
     function renderCards() {
         const { actividades, staff } = datos;
-        let html = "";
-
-        if (!actividades.length) {
-            html = `<div style="text-align:center;padding:60px 20px;color:var(--text-muted)">No hay datos para mostrar.</div>`;
-        } else {
-            for (let i = 0; i < actividades.length; i++) {
-                const a = actividades[i];
-                const pill = clasePill(a.bloque);
-                const bg   = claseCard(a.bloque);
-                const avisoCol = a.aviso
-                    ? `<div class="card-aviso"><span class="aviso-badge" style="flex-direction:column;gap:2px;padding:6px 10px;text-align:center">
-                            <span style="font-size:14px">⚠</span>
-                            <span style="font-size:10px;white-space:normal;max-width:100px;line-height:1.3">${a.aviso}</span>
-                       </span></div>`
-                    : "";
-                html += `
-                <div class="card ${bg}" id="card-${i}">
-                    <div class="card-time">
-                        <div class="card-time-start">${a.horaInicio || '—'}</div>
-                        <div class="card-time-dur">${a.duracion || ''}</div>
-                        ${a.horaFinal ? `<div class="card-time-end">${a.horaFinal}</div>` : ''}
-                    </div>
-                    <div class="card-body">
-                        <div class="card-header-row">
-                            <span class="bloque-pill ${pill}"><span class="bloque-dot"></span>${a.bloque}</span>
-                        </div>
-                        <div class="card-actividad">${a.actividad}</div>
-                        ${a.descripcion ? `<div class="card-desc">${a.descripcion}</div>` : ''}
-                    </div>
-                    ${avisoCol}
-                </div>`;
-            }
-        }
-
+        let html = actividades.length ? "" : `<div style="text-align:center;padding:60px 20px;color:var(--text-muted)">No hay datos para mostrar.</div>`;
+        actividades.forEach((a, i) => {
+            const avisoCol = a.aviso
+                ? `<div class="card-aviso"><span class="aviso-badge" style="flex-direction:column;gap:2px;padding:6px 10px;text-align:center">
+                        <span style="font-size:14px">⚠</span>
+                        <span style="font-size:10px;white-space:normal;max-width:100px;line-height:1.3">${esc(a.aviso)}</span>
+                   </span></div>` : "";
+            html += `
+            <div class="card ${claseCard(a.bloque)}" id="card-${i}">
+                <div class="card-time">
+                    <div class="card-time-start">${esc(a.horaInicio) || "—"}</div>
+                    <div class="card-time-dur">${esc(a.duracion)}</div>
+                    ${a.horaFinal ? `<div class="card-time-end">${esc(a.horaFinal)}</div>` : ""}
+                </div>
+                <div class="card-body">
+                    <div class="card-header-row"><span class="bloque-pill ${clasePill(a.bloque)}"><span class="bloque-dot"></span>${esc(a.bloque)}</span></div>
+                    <div class="card-actividad">${esc(a.actividad)}</div>
+                    ${a.descripcion ? `<div class="card-desc">${esc(a.descripcion)}</div>` : ""}
+                    ${a.aviso ? `<div class="card-aviso-mobile">⚠ ${esc(a.aviso)}</div>` : ""}
+                </div>
+                ${avisoCol}
+            </div>`;
+        });
         document.getElementById("card-timeline").innerHTML = html;
 
         let staffHtml = "";
         if (staff.length) {
-            staffHtml = `<div class="staff-section-title">▸ EQUIPO TÉCNICO / ENCARGADOS</div><div class="staff-grid">`;
+            let g = null;
             for (const s of staff) {
+                if (g === null || s.grupo !== g) {
+                    if (g !== null) staffHtml += `</div>`;
+                    g = s.grupo;
+                    staffHtml += `<div class="staff-section-title">▸ ${esc(g || "EQUIPO TÉCNICO / ENCARGADOS")}</div><div class="staff-grid">`;
+                }
                 staffHtml += `
                 <div class="staff-card">
-                    <div class="staff-card-area">${s.area}</div>
-                    <div class="staff-card-name">${s.encargado}</div>
-                    ${s.notas ? `<div class="staff-card-notes">${s.notas}</div>` : ''}
+                    <div class="staff-card-area">${esc(s.area)}</div>
+                    <div class="staff-card-name">${esc(s.encargado)}</div>
+                    ${s.notas ? `<div class="staff-card-notes">${esc(s.notas)}</div>` : ""}
                 </div>`;
             }
             staffHtml += `</div>`;
@@ -721,12 +678,22 @@
         document.getElementById("staff-card-section").innerHTML = staffHtml;
     }
 
-    /* ── RENDER PRINCIPAL ── */
+    /* ── RENDER PRINCIPAL (siempre de la pestaña activa, desde el caché) ── */
     function renderizar() {
-        renderStats();
-        renderTable();
-        renderCards();
-        actualizarBannerActivo();
+        const entrada = cache[pestañaActiva];
+        if (!entrada) {
+            const msg = errores[pestañaActiva]
+                ? `<div class="state-icon">⚠️</div><div class="state-msg" style="color:#f87171;max-width:500px;margin:0 auto;">${esc(errores[pestañaActiva])}</div>`
+                : `<div class="state-icon">⟳</div><div class="state-msg">Cargando…</div>`;
+            document.getElementById("cronograma-body").innerHTML = `<tr><td colspan="7" class="state-cell">${msg}</td></tr>`;
+            document.getElementById("card-timeline").innerHTML = `<div class="state-cell" style="text-align:center;padding:60px 20px;">${msg}</div>`;
+            document.getElementById("staff-card-section").innerHTML = "";
+            document.getElementById("stats-row").innerHTML = "";
+            document.getElementById("active-banner").style.display = "none";
+            return;
+        }
+        datos = entrada.datos;
+        renderStats(); renderTable(); renderCards(); actualizarBannerActivo();
     }
 
     /* ── VISTA ── */
@@ -739,23 +706,27 @@
     }
 
     /* ── TABS ── */
-    function cambiarPestaña(index, boton) {
+    function marcarTab() {
+        document.querySelectorAll(".tab-btn").forEach((b, i) => b.classList.toggle("active", i === pestañaActiva));
+    }
+    function cambiarPestaña(index) {
         pestañaActiva = index;
-        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-        boton.classList.add('active');
-        document.getElementById("cronograma-body").innerHTML =
-            `<tr><td colspan="7" class="state-cell"><div class="state-icon">⟳</div><div class="state-msg">Cargando…</div></td></tr>`;
-        document.getElementById("card-timeline").innerHTML = "";
-        obtenerDatos();
+        history.replaceState(null, "", "#" + HASHES[index]);
+        marcarTab();
+        renderizar();   /* instantáneo si ya está en caché */
     }
 
     /* ── INIT ── */
     window.onload = () => {
-        setView("table");
-        obtenerDatos();
-        setInterval(obtenerDatos, POLL_INTERVAL);
+        marcarTab();
+        setView(vistaActual);
+        renderizar();
+        actualizarTodo();
+        setInterval(actualizarTodo, POLL_INTERVAL);
         setInterval(actualizarBannerActivo, 30000);
+        document.addEventListener("visibilitychange", () => { if (!document.hidden) actualizarTodo(); });
     };
+
 </script>
 </body>
 </html>
