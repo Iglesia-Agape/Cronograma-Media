@@ -482,12 +482,18 @@
             if (k >= 0) { offset = k; break; }
         }
 
+        /* filas limpias (sin columnas decorativas ni filas vacías), para poder mirar la fila siguiente */
+        const limpias = [];
         for (const fila of filas) {
-            /* quitar columnas decorativas vacías a la izquierda (máx. offset) */
             let lead = 0;
             while (lead < offset && lead < fila.length && !limpiar(fila[lead])) lead++;
-            const c = fila.slice(lead).map(limpiar);
-            if (!c.some(Boolean)) continue;
+            const fc = fila.slice(lead).map(limpiar);
+            if (fc.some(Boolean)) limpias.push(fc);
+        }
+        const esEncabezadoArea = f => !!f && ["ÁREA", "AREA", "ÁREAS"].includes((f[0] || "").toUpperCase());
+
+        for (let k = 0; k < limpias.length; k++) {
+            const c = limpias[k];
 
             const c0U = c[0].toUpperCase();
             if (c0U.includes("CRONOGRAMA GENERAL")) continue;
@@ -499,10 +505,18 @@
                 continue;
             }
             if (modoStaff) {
-                const area = c[0], encargado = c[1] || "";
-                if (area && !encargado && !c.slice(2).some(Boolean)) { grupoStaff = area; continue; } /* subtítulo, p. ej. TRANSMISIÓN DE PRUEBA */
+                const area = c[0], prev = staff.length ? staff[staff.length-1] : null;
+                let encargado = c[1] || "";
+                const sinNotas = !c.slice(2).some(Boolean);
+                /* Fila con solo texto en ÁREA: si lo que sigue es un encabezado "ÁREA | ENCARGADOS",
+                   es un subtítulo de grupo (p. ej. TRANSMISIÓN DE PRUEBA). Si no, es un área cuyo
+                   encargado está en una celda combinada con la fila de arriba. */
+                if (area && !encargado && sinNotas) {
+                    if (esEncabezadoArea(limpias[k+1])) { grupoStaff = area; continue; }
+                    if (prev) encargado = prev.encargado;
+                }
                 if (encargado) {
-                    const areaFinal = area || (staff.length ? staff[staff.length-1].area : "");
+                    const areaFinal = area || (prev ? prev.area : "");
                     staff.push({ grupo: grupoStaff, area: areaFinal, encargado, notas: c.slice(2).filter(Boolean).join(" · ") });
                 }
                 continue;
